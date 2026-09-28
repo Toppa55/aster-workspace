@@ -44,7 +44,10 @@ export function ChatPane({
   selectedModel?: string;
   onProvider: (id: string) => void;
   onModel: (id: string) => void;
-  onSend: (text: string, reasoning: "off" | "low" | "medium" | "high") => void;
+  onSend: (
+    text: string,
+    reasoning: "off" | "low" | "medium" | "high",
+  ) => Promise<boolean>;
   onStop: () => void;
   onMenu: () => void;
   onToggleIde: () => void;
@@ -68,10 +71,10 @@ export function ChatPane({
         : messages,
     [messages, search],
   );
-  const submit = () => {
+  const submit = async () => {
     if (!draft.trim() || generating) return;
-    onSend(draft.trim(), reasoning);
-    setDraft("");
+    const sent = await onSend(draft.trim(), reasoning);
+    if (sent) setDraft("");
   };
   return (
     <section className="relative flex h-full min-w-0 flex-col">
@@ -183,7 +186,8 @@ export function ChatPane({
                 key={message.id}
                 message={message}
                 onRetry={() =>
-                  message.role === "user" && onSend(message.content, reasoning)
+                  message.role === "user" &&
+                  void onSend(message.content, reasoning)
                 }
               />
             ))

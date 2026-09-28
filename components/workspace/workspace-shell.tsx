@@ -86,6 +86,12 @@ export function WorkspaceShell() {
     setData(next);
     setLoading(false);
     if (next.providers.length === 0) setSettings(true);
+    setProviderId((current) =>
+      current &&
+      (current === "smart" || next.providers.some((p) => p.id === current))
+        ? current
+        : next.providers.find((p) => p.enabled)?.id,
+    );
     if (next.conversations[0]) selectConversation(next.conversations[0]);
   }, [fetchData, selectConversation]);
   useEffect(() => {
@@ -154,16 +160,20 @@ export function WorkspaceShell() {
     } else await load();
   };
   const newChat = async () => {
+    const defaultProvider =
+      providerId === "smart"
+        ? data.providers.find((provider) => provider.enabled)?.id
+        : providerId || data.providers.find((provider) => provider.enabled)?.id;
     const r = await action<{ id: string }>({
       action: "create_conversation",
-      providerId: data.providers[0]?.id,
+      providerId: defaultProvider,
+      modelId,
     });
     const next = await fetchData();
     setData({ ...next, messages: [], files: [], changes: [] });
     setActiveId(r.id);
     setActiveProject(undefined);
-    setProviderId(data.providers[0]?.id);
-    setModelId(undefined);
+    setProviderId(defaultProvider);
     setSidebar(false);
   };
   const createProject = useCallback(
@@ -235,12 +245,32 @@ export function WorkspaceShell() {
     text: string,
     reasoning: "off" | "low" | "medium" | "high" = "off",
   ) => {
-    if (!activeId || !providerId || !modelId) return;
+    if (!providerId) {
+      toast.error("Choose an AI provider first");
+      return false;
+    }
+    if (!modelId) {
+      toast.error("Choose a model first");
+      return false;
+    }
     const actualProvider =
       providerId === "smart"
         ? models.find((model) => model.id === modelId)?.connectionId
         : providerId;
-    if (!actualProvider) return;
+    if (!actualProvider) {
+      toast.error("The selected model is not available");
+      return false;
+    }
+    let conversationId = activeId;
+    if (!conversationId) {
+      const created = await action<{ id: string }>({
+        action: "create_conversation",
+        providerId: actualProvider,
+        modelId,
+      });
+      conversationId = created.id;
+      setActiveId(conversationId);
+    }
     const tempUser: Message = {
       id: crypto.randomUUID(),
       role: "user",
@@ -268,7 +298,7 @@ export function WorkspaceShell() {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          conversationId: activeId,
+          conversationId,
           projectId: activeProject,
           providerId: actualProvider,
           modelId,
@@ -309,7 +339,16 @@ export function WorkspaceShell() {
             throw new Error(payload.error || "Generation failed");
         }
       }
-      await refresh();
+      const detail = await fetchData(conversationId, activeProject);
+      setData(detail);
+      const savedConversation = detail.conversations.find(
+        (item) => item.id === conversationId,
+      );
+      if (savedConversation) {
+        setProviderId(savedConversation.provider_id || actualProvider);
+        setModelId(savedConversation.model_id || modelId);
+      }
+      return true;
     } catch (e) {
       if ((e as Error).name !== "AbortError")
         toast.error(e instanceof Error ? e.message : "Generation failed");
@@ -317,6 +356,7 @@ export function WorkspaceShell() {
         ...d,
         messages: d.messages.filter((m) => m.id !== "streaming"),
       }));
+      return false;
     } finally {
       setGenerating(false);
       abort.current = null;
