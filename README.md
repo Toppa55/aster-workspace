@@ -31,36 +31,47 @@ The hosted instance is private by design: [open Aster Workspace](https://aster-w
 
 ## Architecture
 
-| Layer | Implementation |
-| --- | --- |
-| UI | React 19, TypeScript, Tailwind CSS, shadcn primitives |
-| App runtime | Next.js-compatible Vinext on Cloudflare Workers |
-| Editor | Monaco Editor and Monaco Diff Editor |
-| Database | Cloudflare D1 (SQLite) with Drizzle migrations |
-| Blob storage | Cloudflare R2 |
+| Layer          | Implementation                                                                        |
+| -------------- | ------------------------------------------------------------------------------------- |
+| UI             | React 19, TypeScript, Tailwind CSS, shadcn primitives                                 |
+| App runtime    | Next.js-compatible Vinext on Cloudflare Workers                                       |
+| Editor         | Monaco Editor and Monaco Diff Editor                                                  |
+| Database       | Cloudflare D1 (SQLite) with Drizzle migrations                                        |
+| Blob storage   | Cloudflare R2                                                                         |
 | Authentication | Private Sites access / ChatGPT identity headers; adapters can add external auth later |
-| AI gateway | Normalized provider adapters under `lib/ai` |
-| Secrets | AES-GCM at rest with `APP_ENCRYPTION_KEY` |
+| AI gateway     | Normalized provider adapters under `lib/ai`                                           |
+| Secrets        | AES-GCM at rest with `APP_ENCRYPTION_KEY`                                             |
 
 The browser never receives provider credentials. Requests flow through the server-side gateway, which selects only recent conversation turns, enabled memories, summaries, and relevant project files. Coding models return tool calls; the server stages those operations as diffs and stores only prose in chat.
 
 ## Supported providers
 
-| Provider | Models API | Streaming | Structured coding tools | Notes |
-| --- | ---: | ---: | ---: | --- |
-| OpenAI | Yes | Yes | Yes | OpenAI-compatible Chat Completions |
-| Anthropic | Yes | Yes | Yes | Messages API and native tool use |
-| Google Gemini | Yes | Yes | Yes | `generateContent`/SSE and function calling |
-| xAI | Yes | Yes | Yes | OpenAI-compatible API |
-| OpenRouter | Yes | Yes | Yes | Dynamic pricing is read from its model registry |
-| Ollama / LM Studio | Yes | Yes | Model-dependent | Use an accessible OpenAI-compatible base URL |
-| Custom | Yes | Yes | Model-dependent | Any compatible `/models` and `/chat/completions` endpoint |
+| Provider           | Models API | Streaming | Structured coding tools | Notes                                                     |
+| ------------------ | ---------: | --------: | ----------------------: | --------------------------------------------------------- |
+| OpenAI             |        Yes |       Yes |                     Yes | OpenAI-compatible Chat Completions                        |
+| Anthropic          |        Yes |       Yes |                     Yes | Messages API and native tool use                          |
+| Google Gemini      |        Yes |       Yes |                     Yes | `generateContent`/SSE and function calling                |
+| xAI                |        Yes |       Yes |                     Yes | OpenAI-compatible API                                     |
+| OpenRouter         |        Yes |       Yes |                     Yes | Dynamic pricing is read from its model registry           |
+| Ollama / LM Studio |        Yes |       Yes |         Model-dependent | Use an accessible OpenAI-compatible base URL              |
+| Custom             |        Yes |       Yes |         Model-dependent | Any compatible `/models` and `/chat/completions` endpoint |
 
 Official API references: [OpenAI](https://platform.openai.com/docs/api-reference), [Anthropic](https://docs.anthropic.com/en/api/messages), [Gemini](https://ai.google.dev/gemini-api/docs), [xAI](https://docs.x.ai/), and [OpenRouter](https://openrouter.ai/docs/quickstart).
 
 ## Local development
 
 Requirements: Node.js 22.13+, pnpm, and a Cloudflare-compatible local runtime.
+
+### Windows one-click setup
+
+Extract the downloaded ZIP, install Node.js 22 or newer, then double-click
+`Start-Aster.bat`. On its first run it installs dependencies, creates a private
+encryption key, prepares the local database, starts Aster, and opens
+`http://localhost:5173`. Later launches reuse the same local data and settings.
+
+No global pnpm or Corepack installation is required.
+
+### Manual setup
 
 ```bash
 git clone https://github.com/Toppa55/aster-workspace.git
@@ -88,11 +99,11 @@ Open the shown local URL. Go to **Settings → AI Providers**, paste your own pr
 
 ## Environment variables
 
-| Variable | Required | Purpose |
-| --- | --- | --- |
-| `APP_ENCRYPTION_KEY` | Yes | Encrypts provider credentials at rest. Use at least 32 random characters. |
-| `APP_ACCESS_PASSWORD` | Optional | Reserved for external single-user authentication adapters. |
-| `SESSION_SECRET` | Optional | Reserved for signed sessions outside Sites. |
+| Variable              | Required | Purpose                                                                   |
+| --------------------- | -------- | ------------------------------------------------------------------------- |
+| `APP_ENCRYPTION_KEY`  | Yes      | Encrypts provider credentials at rest. Use at least 32 random characters. |
+| `APP_ACCESS_PASSWORD` | Optional | Reserved for external single-user authentication adapters.                |
+| `SESSION_SECRET`      | Optional | Reserved for signed sessions outside Sites.                               |
 
 Never commit `.env`, provider keys, database credentials, deployment tokens, or exported user data.
 
