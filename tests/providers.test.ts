@@ -1,14 +1,34 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { completeCoding, listModels, streamChat } from "../lib/ai/adapters";
+import { projectWorkspaceMessage } from "../lib/ai/project-message";
 import type { ProviderCredential, StreamEvent } from "../lib/ai/types";
 
-const openai: ProviderCredential = { id: "openai", type: "openai", name: "OpenAI", apiKey: "test-key" };
-const anthropic: ProviderCredential = { id: "anthropic", type: "anthropic", name: "Anthropic", apiKey: "test-key" };
+const openai: ProviderCredential = {
+  id: "openai",
+  type: "openai",
+  name: "OpenAI",
+  apiKey: "test-key",
+};
+const anthropic: ProviderCredential = {
+  id: "anthropic",
+  type: "anthropic",
+  name: "Anthropic",
+  apiKey: "test-key",
+};
 afterEach(() => vi.restoreAllMocks());
 
 describe("provider adapters", () => {
   it("normalizes dynamic OpenAI model discovery", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: [{ id: "gpt-test" }] }), { status: 200 })));
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(JSON.stringify({ data: [{ id: "gpt-test" }] }), {
+            status: 200,
+          }),
+        ),
+    );
     const models = await listModels(openai);
     expect(models[0]).toMatchObject({ id: "gpt-test", provider: "openai" });
     expect(models[0].capabilities.streaming).toBe(true);
@@ -20,11 +40,32 @@ describe("provider adapters", () => {
       `data: ${JSON.stringify({ choices: [], usage: { prompt_tokens: 4, completion_tokens: 2, prompt_tokens_details: { cached_tokens: 1 } } })}\n\n`,
       "data: [DONE]\n\n",
     ].join("");
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(events, { status: 200, headers: { "content-type": "text/event-stream" } })));
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(events, {
+            status: 200,
+            headers: { "content-type": "text/event-stream" },
+          }),
+        ),
+    );
     const result: StreamEvent[] = [];
-    for await (const event of streamChat(openai, "gpt-test", [{ role: "user", content: "Hi" }])) result.push(event);
+    for await (const event of streamChat(openai, "gpt-test", [
+      { role: "user", content: "Hi" },
+    ]))
+      result.push(event);
     expect(result[0]).toEqual({ type: "text", text: "Hello" });
-    expect(result.at(-1)).toEqual({ type: "usage", usage: { inputTokens: 4, outputTokens: 2, cachedTokens: 1, costUsd: undefined } });
+    expect(result.at(-1)).toEqual({
+      type: "usage",
+      usage: {
+        inputTokens: 4,
+        outputTokens: 2,
+        cachedTokens: 1,
+        costUsd: undefined,
+      },
+    });
   });
 
   it("streams Anthropic messages with normalized usage", async () => {
@@ -32,18 +73,73 @@ describe("provider adapters", () => {
       `data: ${JSON.stringify({ delta: { type: "text_delta", text: "Claude" } })}\n\n`,
       `data: ${JSON.stringify({ usage: { input_tokens: 8, output_tokens: 3, cache_read_input_tokens: 2 } })}\n\n`,
     ].join("");
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(events, { status: 200 })));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(events, { status: 200 })),
+    );
     const result: StreamEvent[] = [];
-    for await (const event of streamChat(anthropic, "claude-test", [{ role: "user", content: "Hi" }])) result.push(event);
+    for await (const event of streamChat(anthropic, "claude-test", [
+      { role: "user", content: "Hi" },
+    ]))
+      result.push(event);
     expect(result[0]).toEqual({ type: "text", text: "Claude" });
-    expect(result.at(-1)).toEqual({ type: "usage", usage: { inputTokens: 8, outputTokens: 3, cachedTokens: 2 } });
+    expect(result.at(-1)).toEqual({
+      type: "usage",
+      usage: { inputTokens: 8, outputTokens: 3, cachedTokens: 2 },
+    });
   });
 
   it("parses structured coding operations instead of chat code blocks", async () => {
-    const args = { operations: [{ type: "create_file", path: "src/app.ts", content: "export {};" }], explanation: "Created the entry point.", user_message: "Done. Review one new file in the workspace." };
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ choices: [{ message: { tool_calls: [{ function: { arguments: JSON.stringify(args) } }] } }], usage: { prompt_tokens: 20, completion_tokens: 10 } }), { status: 200 })));
-    const result = await completeCoding(openai, "gpt-test", [{ role: "user", content: "Build it" }]);
-    expect(result.operations).toEqual([{ type: "create_file", path: "src/app.ts", content: "export {};" }]);
+    const args = {
+      operations: [
+        { type: "create_file", path: "src/app.ts", content: "export {};" },
+      ],
+      explanation: "Created the entry point.",
+      user_message: "Done. Review one new file in the workspace.",
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(
+            JSON.stringify({
+              choices: [
+                {
+                  message: {
+                    tool_calls: [
+                      { function: { arguments: JSON.stringify(args) } },
+                    ],
+                  },
+                },
+              ],
+              usage: { prompt_tokens: 20, completion_tokens: 10 },
+            }),
+            { status: 200 },
+          ),
+        ),
+    );
+    const result = await completeCoding(openai, "gpt-test", [
+      { role: "user", content: "Build it" },
+    ]);
+    expect(result.operations).toEqual([
+      { type: "create_file", path: "src/app.ts", content: "export {};" },
+    ]);
     expect(result.userMessage).not.toContain("export");
+  });
+});
+
+describe("project chat separation", () => {
+  it("summarizes file operations without including their source", () => {
+    const secretSource = "export const password = 'must-not-appear';";
+    const message = projectWorkspaceMessage([
+      { type: "create_file", path: "src/app.ts", content: secretSource },
+      { type: "update_file", path: "src/styles.css", content: "body {}" },
+    ]);
+
+    expect(message).toContain("src/app.ts");
+    expect(message).toContain("src/styles.css");
+    expect(message).not.toContain(secretSource);
+    expect(message).not.toContain("body {}");
   });
 });

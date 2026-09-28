@@ -1,6 +1,7 @@
 import { completeCoding, streamChat } from "@/lib/ai/adapters";
 import { buildContext } from "@/lib/ai/context";
 import { inferCapabilities, estimateCost } from "@/lib/ai/catalog";
+import { projectWorkspaceMessage } from "@/lib/ai/project-message";
 import type { CodingOperation, Usage } from "@/lib/ai/types";
 import { credentialFor } from "@/app/api/providers/route";
 import { requireUser } from "@/lib/server/auth";
@@ -85,9 +86,6 @@ export async function POST(request: Request) {
             request.signal,
           );
           usage = result.usage;
-          responseText = safeProjectMessage(
-            result.userMessage || result.explanation,
-          );
           const changes = await stageOperations(
             projectId!,
             body.conversationId!,
@@ -95,6 +93,7 @@ export async function POST(request: Request) {
             result.operations,
             time,
           );
+          responseText = projectWorkspaceMessage(result.operations, changes);
           send("delta", { text: responseText });
           send("changes", { count: changes });
         } else {
@@ -278,15 +277,6 @@ async function stageOperations(
     }
   }
   return count;
-}
-function safeProjectMessage(value: string) {
-  const withoutFences = value.replace(
-    /```[\s\S]*?```/g,
-    "[Source change available in the workspace]",
-  );
-  return withoutFences.length > 1400
-    ? `${withoutFences.slice(0, 1400)}… Review the full changes in the workspace.`
-    : withoutFences;
 }
 function titleFrom(value: string) {
   return (

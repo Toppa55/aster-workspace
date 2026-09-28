@@ -73,8 +73,10 @@ export function ChatPane({
   );
   const submit = async () => {
     if (!draft.trim() || generating) return;
-    const sent = await onSend(draft.trim(), reasoning);
-    if (sent) setDraft("");
+    const message = draft.trim();
+    setDraft("");
+    const sent = await onSend(message, reasoning);
+    if (!sent) setDraft((current) => current || message);
   };
   return (
     <section className="relative flex h-full min-w-0 flex-col">
