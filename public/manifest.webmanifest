@@ -8,7 +8,7 @@
   "theme_color": "#101116",
   "icons": [
     {
-      "src": "/astrid-logo.png",
+      "src": "/astrid-icon.png",
       "sizes": "1254x1254",
       "type": "image/png",
       "purpose": "any"

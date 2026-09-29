@@ -158,11 +158,8 @@ export function Sidebar({
       className={`${open ? "flex" : "hidden"} fixed inset-y-0 left-0 z-40 w-[286px] flex-col border-r border-border bg-sidebar p-3 shadow-2xl lg:static lg:flex lg:shadow-none`}
     >
       <div className="flex h-11 items-center gap-2 px-2">
-        <img
-          src="/astrid-logo.png"
-          alt="Astrid"
-          className="h-10 w-auto max-w-[170px] object-contain object-left"
-        />
+        <img src="/astrid-icon.png" alt="" className="size-9 object-contain" />
+        <span className="text-base font-semibold tracking-tight">Astrid</span>
         <button
           onClick={onClose}
           className="ml-auto rounded-lg p-2 hover:bg-accent lg:hidden"

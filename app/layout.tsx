@@ -6,9 +6,9 @@ export const metadata: Metadata = {
   description: "Your private, multi-provider AI chat and coding workspace.",
   manifest: "/manifest.webmanifest",
   icons: {
-    icon: "/astrid-logo.png",
-    shortcut: "/astrid-logo.png",
-    apple: "/astrid-logo.png",
+    icon: "/astrid-icon.png",
+    shortcut: "/astrid-icon.png",
+    apple: "/astrid-icon.png",
   },
 };
 

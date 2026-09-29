@@ -22,9 +22,11 @@ The hosted instance is private by design: [open Astrid Workspace](https://astrid
 - Settings-based model menu: all discovered models remain available while the chat selector defaults to a concise curated set
 - Manual model selection and optional Smart/Balanced routing across connected providers
 - Capability-aware model details and provider-specific reasoning effort controls
+- Persistent image generation through supported OpenAI GPT Image models, with private previews, downloads, usage, and cost records
 - AES-GCM encrypted provider keys; the client receives only masked key hints
 - Monaco editor, file tree, unsaved state, file operations, syntax highlighting, and side-by-side diffs
 - Structured `create_file`, `update_file`, `delete_file`, and `rename_file` AI operations
+- CAD-oriented project generation using editable CadQuery/OpenSCAD source; STEP is the preferred Shapr3D interchange format when a local CAD runtime performs the export
 - Apply/Reject per change, Apply All/Reject All, and optional automatic application
 - Automatic coding-intent routing: build requests become projects before the provider is called, so source is staged in the IDE instead of dumped into chat
 - Optional desktop folder mirroring through the browser File System Access API (Chrome/Edge)
@@ -63,6 +65,8 @@ The browser never receives provider credentials. Requests flow through the serve
 | Custom             |        Yes |       Yes |         Model-dependent | Any compatible `/models` and `/chat/completions` endpoint |
 
 Official API references: [OpenAI](https://platform.openai.com/docs/api-reference), [Anthropic](https://docs.anthropic.com/en/api/messages), [Gemini](https://ai.google.dev/gemini-api/docs), [xAI](https://docs.x.ai/), and [OpenRouter](https://openrouter.ai/docs/quickstart).
+
+OpenAI image models use the authenticated Images API and store generated files in the installation's private object bucket. Native `.shapr` authoring is not exposed as a public Shapr3D conversion API; Astrid therefore generates editable parametric CAD source and targets STEP/STL interchange instead of fabricating a proprietary file.
 
 ## Local development
 
