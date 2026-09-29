@@ -15,6 +15,7 @@ export type ModelCapabilities = {
   outputPricePerMillion?: number;
   reasoning: boolean;
   vision: boolean;
+  imageGeneration: boolean;
   tools: boolean;
   structuredOutputs: boolean;
   streaming: boolean;
@@ -60,5 +61,13 @@ export type CodingResult = {
   operations: CodingOperation[];
   explanation: string;
   userMessage: string;
+  usage: Usage;
+};
+
+export type GeneratedImage = {
+  bytes: Uint8Array;
+  mimeType: "image/png" | "image/jpeg" | "image/webp";
+  extension: "png" | "jpeg" | "webp";
+  revisedPrompt?: string;
   usage: Usage;
 };

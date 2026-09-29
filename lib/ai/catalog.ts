@@ -3,6 +3,7 @@ import type { ModelCapabilities, ProviderType } from "./types";
 const defaults: ModelCapabilities = {
   reasoning: false,
   vision: false,
+  imageGeneration: false,
   tools: false,
   structuredOutputs: false,
   streaming: true,
@@ -54,11 +55,14 @@ export function inferCapabilities(
     value,
   );
   const tools = !/embedding|moderation|tts|audio|image/.test(value);
+  const imageGeneration =
+    provider === "openai" && /^(gpt-image-|dall-e-)/.test(value);
   return {
     ...defaults,
     ...priceForModel(provider, id),
     reasoning,
     vision: multimodal,
+    imageGeneration,
     files: multimodal,
     tools,
     structuredOutputs: tools,
@@ -79,6 +83,11 @@ const pricingRules: Array<{
   price: ModelPrice;
 }> = [
   // Standard processing prices, USD per one million text tokens.
+  {
+    provider: "openai",
+    pattern: /(^|\/)gpt-image-2\.5-(?:flare|sunburst)(?:$|-)/,
+    price: price(5, 1.25, 30),
+  },
   {
     provider: "openai",
     pattern: /(^|\/)gpt-6-astra(?:$|-)/,

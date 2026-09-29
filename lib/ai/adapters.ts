@@ -6,6 +6,7 @@ import {
 import type {
   ChatMessage,
   CodingResult,
+  GeneratedImage,
   ModelInfo,
   ProviderCredential,
   StreamEvent,
@@ -98,6 +99,78 @@ async function checked(response: Response) {
   throw new Error(
     `Provider request failed (${response.status}): ${detail || response.statusText}`,
   );
+}
+
+export async function generateImage(
+  credential: ProviderCredential,
+  model: string,
+  prompt: string,
+  signal?: AbortSignal,
+): Promise<GeneratedImage> {
+  if (credential.type !== "openai")
+    throw new Error(
+      "Image generation is currently available through an OpenAI connection. Other provider image adapters can be added without changing the chat UI.",
+    );
+  if (!/^(gpt-image-|dall-e-)/i.test(model))
+    throw new Error(
+      "Choose a GPT Image or DALL·E model under Settings → Models, then try again.",
+    );
+  const gptImage = /^gpt-image-/i.test(model);
+  const response = await checked(
+    await fetch(`${base(credential)}/images/generations`, {
+      method: "POST",
+      headers: headersFor(credential),
+      body: JSON.stringify({
+        model,
+        prompt,
+        n: 1,
+        size: "1024x1024",
+        ...(gptImage
+          ? { quality: "medium", output_format: "png" }
+          : { response_format: "b64_json" }),
+      }),
+      signal,
+    }),
+  );
+  const value = (await response.json()) as {
+    data?: Array<{ b64_json?: string; url?: string; revised_prompt?: string }>;
+    output_format?: "png" | "jpeg" | "webp";
+    usage?: { input_tokens?: number; output_tokens?: number };
+  };
+  const image = value.data?.[0];
+  if (!image) throw new Error("The image provider returned no image.");
+  let bytes: Uint8Array;
+  if (image.b64_json) bytes = decodeBase64(image.b64_json);
+  else if (image.url) {
+    const download = await checked(await fetch(image.url, { signal }));
+    bytes = new Uint8Array(await download.arrayBuffer());
+  } else throw new Error("The image provider returned no usable image data.");
+  const extension = value.output_format || "png";
+  const mimeType =
+    extension === "jpeg"
+      ? "image/jpeg"
+      : extension === "webp"
+        ? "image/webp"
+        : "image/png";
+  return {
+    bytes,
+    mimeType,
+    extension,
+    revisedPrompt: image.revised_prompt,
+    usage: {
+      inputTokens: value.usage?.input_tokens ?? 0,
+      outputTokens: value.usage?.output_tokens ?? 0,
+      cachedTokens: 0,
+    },
+  };
+}
+
+function decodeBase64(value: string) {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index++)
+    bytes[index] = binary.charCodeAt(index);
+  return bytes;
 }
 
 export async function listModels(

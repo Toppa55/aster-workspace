@@ -70,6 +70,7 @@ export type Model = {
     outputPricePerMillion?: number;
     reasoning: boolean;
     vision: boolean;
+    imageGeneration: boolean;
     tools: boolean;
     structuredOutputs: boolean;
     streaming: boolean;

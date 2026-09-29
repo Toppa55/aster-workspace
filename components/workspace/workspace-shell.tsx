@@ -28,6 +28,7 @@ import {
   projectNameFromPrompt,
 } from "@/lib/ai/coding-intent";
 import { visibleModels } from "@/lib/ai/model-visibility";
+import { isImageGenerationRequest } from "@/lib/ai/image-intent";
 
 const empty: WorkspaceData = {
   user: { id: "" },
@@ -304,10 +305,22 @@ export function WorkspaceShell() {
       toast.error("Choose a model first");
       return false;
     }
+    const selectedModel = models.find((model) => model.id === modelId);
+    const wantsImage = isImageGenerationRequest(text);
+    const routedModel =
+      selectedModel?.capabilities.imageGeneration || !wantsImage
+        ? selectedModel
+        : models.find((model) => model.capabilities.imageGeneration);
+    if (wantsImage && !routedModel?.capabilities.imageGeneration) {
+      toast.error(
+        "Enable a GPT Image model under Settings → Models, then try again.",
+      );
+      return false;
+    }
+    const requestModelId = routedModel?.id || modelId;
+    const imageGeneration = !!routedModel?.capabilities.imageGeneration;
     const actualProvider =
-      providerId === "smart"
-        ? models.find((model) => model.id === modelId)?.connectionId
-        : providerId;
+      providerId === "smart" ? routedModel?.connectionId : providerId;
     if (!actualProvider) {
       toast.error("The selected model is not available");
       return false;
@@ -317,7 +330,7 @@ export function WorkspaceShell() {
       const created = await action<{ id: string }>({
         action: "create_conversation",
         providerId: actualProvider,
-        modelId,
+        modelId: requestModelId,
       });
       conversationId = created.id;
       setActiveId(conversationId);
@@ -357,49 +370,59 @@ export function WorkspaceShell() {
     setGenerating(true);
     abort.current = new AbortController();
     try {
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          conversationId,
-          projectId: requestProjectId,
-          providerId: actualProvider,
-          modelId,
-          message: text,
-          reasoning,
-        }),
-        signal: abort.current.signal,
-      });
+      const response = await fetch(
+        imageGeneration ? "/api/images" : "/api/chat",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            conversationId,
+            projectId: requestProjectId,
+            providerId: actualProvider,
+            modelId: requestModelId,
+            ...(imageGeneration ? { prompt: text } : { message: text }),
+            reasoning,
+          }),
+          signal: abort.current.signal,
+        },
+      );
       if (!response.ok) {
         const problem = (await response.json()) as { error?: string };
         throw new Error(problem.error || "Generation failed");
       }
-      if (!response.body) throw new Error("Empty response");
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const blocks = buffer.split("\n\n");
-        buffer = blocks.pop() || "";
-        for (const block of blocks) {
-          const event = block.match(/^event: (.+)$/m)?.[1];
-          const raw = block.match(/^data: (.+)$/m)?.[1];
-          if (!event || !raw) continue;
-          const payload = JSON.parse(raw) as { text?: string; error?: string };
-          if (event === "delta" && payload.text)
-            setData((d) => ({
-              ...d,
-              messages: d.messages.map((m) =>
-                m.id === "streaming"
-                  ? { ...m, content: m.content + payload.text }
-                  : m,
-              ),
-            }));
-          if (event === "error")
-            throw new Error(payload.error || "Generation failed");
+      if (imageGeneration) {
+        await response.json();
+      } else {
+        if (!response.body) throw new Error("Empty response");
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const blocks = buffer.split("\n\n");
+          buffer = blocks.pop() || "";
+          for (const block of blocks) {
+            const event = block.match(/^event: (.+)$/m)?.[1];
+            const raw = block.match(/^data: (.+)$/m)?.[1];
+            if (!event || !raw) continue;
+            const payload = JSON.parse(raw) as {
+              text?: string;
+              error?: string;
+            };
+            if (event === "delta" && payload.text)
+              setData((d) => ({
+                ...d,
+                messages: d.messages.map((m) =>
+                  m.id === "streaming"
+                    ? { ...m, content: m.content + payload.text }
+                    : m,
+                ),
+              }));
+            if (event === "error")
+              throw new Error(payload.error || "Generation failed");
+          }
         }
       }
       const detail = await fetchData(conversationId, requestProjectId);
@@ -415,7 +438,7 @@ export function WorkspaceShell() {
       );
       if (savedConversation) {
         setProviderId(savedConversation.provider_id || actualProvider);
-        setModelId(savedConversation.model_id || modelId);
+        setModelId(savedConversation.model_id || requestModelId);
       }
       return true;
     } catch (e) {

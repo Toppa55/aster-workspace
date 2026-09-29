@@ -5,6 +5,7 @@ import {
   Copy,
   Edit3,
   FolderCode,
+  Image as ImageIcon,
   Menu,
   Paperclip,
   RefreshCw,
@@ -160,6 +161,11 @@ export function ChatPane({
           </span>
           {selected.capabilities.reasoning && <span>Reasoning</span>}
           {selected.capabilities.vision && <span>Vision</span>}
+          {selected.capabilities.imageGeneration && (
+            <span className="flex items-center gap-1 text-violet-400">
+              <ImageIcon className="size-3" /> Image generation
+            </span>
+          )}
           {selected.capabilities.tools && <span>Tools</span>}
           <span className="ml-auto capitalize">{selected.provider}</span>
           {selected.capabilities.reasoning && (
@@ -238,8 +244,8 @@ export function ChatPane({
               placeholder={
                 providers.length
                   ? projectMode
-                    ? "Ask Aster to build or change something…"
-                    : "Ask Aster anything…"
+                    ? "Ask Astrid to build or change something…"
+                    : "Ask Astrid anything…"
                   : "Connect an AI provider in Settings to begin"
               }
               className="max-h-40 min-h-16 w-full resize-none bg-transparent px-4 pt-3 text-[16px] outline-none placeholder:text-muted-foreground"
@@ -290,7 +296,7 @@ export function ChatPane({
             </div>
           </div>
           <p className="mt-2 text-center text-[11px] text-muted-foreground">
-            Aster sends only the context needed for your request.
+            Astrid sends only the context needed for your request.
           </p>
         </div>
       </div>
@@ -347,7 +353,19 @@ function MessageView({
     >
       {message.role === "assistant" ? (
         <div className="prose prose-sm max-w-none text-foreground prose-headings:text-foreground prose-p:text-foreground prose-strong:text-foreground prose-code:text-violet-300 prose-pre:bg-[#0b0d12] prose-table:block prose-table:overflow-x-auto dark:prose-invert">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            components={{
+              img: ({ src, alt }) => (
+                <img
+                  src={src || ""}
+                  alt={alt || "Generated image"}
+                  className="max-h-[70vh] w-auto max-w-full rounded-2xl border object-contain shadow-sm"
+                  loading="lazy"
+                />
+              ),
+            }}
+          >
             {message.content || "…"}
           </ReactMarkdown>
         </div>

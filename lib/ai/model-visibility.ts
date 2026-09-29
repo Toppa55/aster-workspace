@@ -2,7 +2,11 @@ export type ModelVisibility = Record<string, string[]>;
 type VisibleModel = {
   id: string;
   name: string;
-  capabilities: { tools: boolean; reasoning: boolean };
+  capabilities: {
+    tools: boolean;
+    reasoning: boolean;
+    imageGeneration?: boolean;
+  };
 };
 
 const NON_CHAT =
@@ -15,7 +19,7 @@ export function curatedModelIds<T extends VisibleModel>(
   models: T[],
   limit = 8,
 ) {
-  return models
+  const chat = models
     .filter((model) => !NON_CHAT.test(`${model.id} ${model.name}`))
     .map((model) => ({
       model,
@@ -30,6 +34,24 @@ export function curatedModelIds<T extends VisibleModel>(
     )
     .slice(0, limit)
     .map(({ model }) => model.id);
+  const image = models
+    .filter((model) => model.capabilities.imageGeneration)
+    .sort(
+      (a, b) =>
+        imageModelScore(b.id) - imageModelScore(a.id) ||
+        a.name.localeCompare(b.name),
+    )[0]?.id;
+  return image ? [...chat, image] : chat;
+}
+
+function imageModelScore(id: string) {
+  const value = id.toLowerCase();
+  if (value.includes("2.5-flare")) return 6;
+  if (value.includes("2.5-sunburst")) return 5;
+  if (value.includes("gpt-image-2")) return 4;
+  if (value.includes("gpt-image-1.5")) return 3;
+  if (value.includes("gpt-image-1")) return 2;
+  return 1;
 }
 
 export function visibleModels<T extends VisibleModel>(

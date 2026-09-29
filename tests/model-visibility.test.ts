@@ -5,6 +5,7 @@ import type { ModelInfo } from "../lib/ai/types";
 const capabilities = {
   reasoning: true,
   vision: true,
+  imageGeneration: false,
   tools: true,
   structuredOutputs: true,
   streaming: true,
@@ -32,5 +33,18 @@ describe("model visibility", () => {
         "provider-1": ["text-embedding-3"],
       }).map((model) => model.id),
     ).toEqual(["text-embedding-3"]);
+  });
+
+  it("includes one image model in the default shortlist", () => {
+    const withImage: ModelInfo[] = [
+      ...models,
+      {
+        id: "gpt-image-2.5-flare",
+        name: "GPT Image 2.5 Flare",
+        provider: "openai",
+        capabilities: { ...capabilities, imageGeneration: true, tools: false },
+      },
+    ];
+    expect(curatedModelIds(withImage)).toContain("gpt-image-2.5-flare");
   });
 });
