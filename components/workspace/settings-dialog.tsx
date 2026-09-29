@@ -349,24 +349,24 @@ export function SettingsDialog({
   };
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[88dvh] overflow-hidden p-0 sm:max-w-3xl">
-        <DialogHeader className="border-b px-6 py-5">
+      <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] overflow-hidden p-0 sm:max-h-[88dvh] sm:max-w-3xl">
+        <DialogHeader className="min-w-0 border-b px-4 py-4 pr-12 text-left sm:px-6 sm:py-5">
           <DialogTitle>Workspace settings</DialogTitle>
           <DialogDescription>
             Keys are encrypted server-side and never returned to the browser.
           </DialogDescription>
         </DialogHeader>
-        <div className="grid min-h-0 sm:grid-cols-[170px_1fr]">
-          <nav className="flex gap-1 border-b p-3 sm:flex-col sm:border-b-0 sm:border-r">
+        <div className="grid min-h-0 min-w-0 sm:grid-cols-[170px_minmax(0,1fr)]">
+          <nav className="flex min-w-0 snap-x gap-1 overflow-x-auto border-b p-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:flex-col sm:overflow-visible sm:border-b-0 sm:border-r sm:p-3">
             <button
               onClick={() => setTab("models")}
-              className={`rounded-lg px-3 py-2 text-left text-sm ${tab === "models" ? "bg-accent font-medium" : "text-muted-foreground"}`}
+              className={`shrink-0 snap-start whitespace-nowrap rounded-lg px-3 py-2 text-left text-sm ${tab === "models" ? "bg-accent font-medium" : "text-muted-foreground"}`}
             >
               Models
             </button>
             <button
               onClick={() => setTab("providers")}
-              className={`rounded-lg px-3 py-2 text-left text-sm ${tab === "providers" ? "bg-accent font-medium" : "text-muted-foreground"}`}
+              className={`shrink-0 snap-start whitespace-nowrap rounded-lg px-3 py-2 text-left text-sm ${tab === "providers" ? "bg-accent font-medium" : "text-muted-foreground"}`}
             >
               AI Providers
             </button>
@@ -379,19 +379,19 @@ export function SettingsDialog({
                       ?.id || "",
                   );
               }}
-              className={`rounded-lg px-3 py-2 text-left text-sm ${tab === "voice" ? "bg-accent font-medium" : "text-muted-foreground"}`}
+              className={`shrink-0 snap-start whitespace-nowrap rounded-lg px-3 py-2 text-left text-sm ${tab === "voice" ? "bg-accent font-medium" : "text-muted-foreground"}`}
             >
               Voice input
             </button>
             <button
               onClick={() => setTab("preferences")}
-              className={`rounded-lg px-3 py-2 text-left text-sm ${tab === "preferences" ? "bg-accent font-medium" : "text-muted-foreground"}`}
+              className={`shrink-0 snap-start whitespace-nowrap rounded-lg px-3 py-2 text-left text-sm ${tab === "preferences" ? "bg-accent font-medium" : "text-muted-foreground"}`}
             >
               Instructions
             </button>
             <button
               onClick={() => setTab("workspace")}
-              className={`rounded-lg px-3 py-2 text-left text-sm ${tab === "workspace" ? "bg-accent font-medium" : "text-muted-foreground"}`}
+              className={`shrink-0 snap-start whitespace-nowrap rounded-lg px-3 py-2 text-left text-sm ${tab === "workspace" ? "bg-accent font-medium" : "text-muted-foreground"}`}
             >
               Local workspace
             </button>
@@ -407,18 +407,18 @@ export function SettingsDialog({
                       .slice(0, 80),
                   );
               }}
-              className={`rounded-lg px-3 py-2 text-left text-sm ${tab === "connections" ? "bg-accent font-medium" : "text-muted-foreground"}`}
+              className={`shrink-0 snap-start whitespace-nowrap rounded-lg px-3 py-2 text-left text-sm ${tab === "connections" ? "bg-accent font-medium" : "text-muted-foreground"}`}
             >
               Connections
             </button>
             <button
               onClick={() => setTab("security")}
-              className={`rounded-lg px-3 py-2 text-left text-sm ${tab === "security" ? "bg-accent font-medium" : "text-muted-foreground"}`}
+              className={`shrink-0 snap-start whitespace-nowrap rounded-lg px-3 py-2 text-left text-sm ${tab === "security" ? "bg-accent font-medium" : "text-muted-foreground"}`}
             >
               Security
             </button>
           </nav>
-          <div className="max-h-[68dvh] overflow-y-auto p-5">
+          <div className="max-h-[calc(100dvh-9.5rem)] min-w-0 overflow-x-hidden overflow-y-auto p-4 sm:max-h-[68dvh] sm:p-5">
             {tab === "providers" && (
               <div className="space-y-5">
                 <div>
@@ -724,7 +724,7 @@ export function SettingsDialog({
                       return (
                         <section
                           key={provider.id}
-                          className="rounded-xl border"
+                          className="min-w-0 rounded-xl border"
                         >
                           <div className="flex items-center border-b px-3 py-2">
                             <span className="text-sm font-medium">
