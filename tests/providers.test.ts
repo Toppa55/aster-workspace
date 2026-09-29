@@ -120,6 +120,7 @@ describe("provider adapters", () => {
     const request = JSON.parse(
       String((fetchMock.mock.calls[0]?.[1] as RequestInit | undefined)?.body),
     ) as {
+      reasoning_effort: string;
       tools: Array<{
         function: {
           parameters: {
@@ -133,6 +134,7 @@ describe("provider adapters", () => {
     expect(
       request.tools[0].function.parameters.properties.operations.items.required,
     ).toEqual(["type", "path", "newPath", "content"]);
+    expect(request.reasoning_effort).toBe("none");
     expect(result.operations).toEqual([
       { type: "create_file", path: "src/app.ts", content: "export {};" },
     ]);

@@ -519,9 +519,11 @@ export async function completeCoding(
         tools: [tool],
         tool_choice: { type: "function", function: { name: codingTool.name } },
         reasoning_effort:
-          reasoning !== "off" && ["openai", "xai"].includes(credential.type)
-            ? reasoning
-            : undefined,
+          credential.type === "openai"
+            ? "none"
+            : credential.type === "xai" && reasoning !== "off"
+              ? reasoning
+              : undefined,
       }),
       signal,
     }),
