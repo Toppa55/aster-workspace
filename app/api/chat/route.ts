@@ -6,6 +6,7 @@ import type { CodingOperation, Usage } from "@/lib/ai/types";
 import { credentialFor } from "@/app/api/providers/route";
 import { requireUser } from "@/lib/server/auth";
 import { database, id, now } from "@/lib/server/db";
+import { githubContextForPrompt } from "@/lib/integrations/github-context";
 
 export const dynamic = "force-dynamic";
 
@@ -59,6 +60,11 @@ export async function POST(request: Request) {
           body.message!,
           projectId,
         );
+        const githubContext = await githubContextForPrompt(
+          user.id,
+          body.message!,
+        );
+        if (githubContext) context.messages.splice(1, 0, githubContext);
         const time = now();
         const userMessageId = id();
         await database()
