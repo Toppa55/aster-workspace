@@ -12,9 +12,93 @@ import {
   Search,
   Settings,
   Sparkles,
+  Trash2,
   X,
 } from "lucide-react";
+import { useRef, useState } from "react";
 import type { Conversation, Project } from "./types";
+
+function ChatRow({
+  conversation,
+  active,
+  onSelect,
+  onManage,
+  onDelete,
+}: {
+  conversation: Conversation;
+  active: boolean;
+  onSelect: () => void;
+  onManage: () => void;
+  onDelete: () => void;
+}) {
+  const [deleteVisible, setDeleteVisible] = useState(false);
+  const touch = useRef<{ x: number; y: number } | undefined>(undefined);
+  return (
+    <div className="relative overflow-hidden rounded-lg" key={conversation.id}>
+      <button
+        type="button"
+        onClick={onDelete}
+        className="absolute inset-y-0 right-0 flex w-[76px] items-center justify-center gap-1 bg-destructive text-xs font-medium text-destructive-foreground lg:hidden"
+        aria-label={`Delete ${conversation.title}`}
+      >
+        <Trash2 className="size-4" />
+        Delete
+      </button>
+      <div
+        draggable
+        onDragStart={(event) =>
+          event.dataTransfer.setData("text/conversation", conversation.id)
+        }
+        onTouchStart={(event) => {
+          const point = event.touches[0];
+          touch.current = point
+            ? { x: point.clientX, y: point.clientY }
+            : undefined;
+        }}
+        onTouchEnd={(event) => {
+          const start = touch.current;
+          const point = event.changedTouches[0];
+          touch.current = undefined;
+          if (!start || !point) return;
+          const horizontal = point.clientX - start.x;
+          const vertical = Math.abs(point.clientY - start.y);
+          if (vertical > Math.abs(horizontal)) return;
+          if (horizontal < -36) setDeleteVisible(true);
+          if (horizontal > 28) setDeleteVisible(false);
+        }}
+        className={`group relative flex w-full items-center gap-2 rounded-lg bg-sidebar px-2 py-2 text-left text-sm transition-transform duration-200 lg:translate-x-0 ${deleteVisible ? "-translate-x-[76px]" : "translate-x-0"} ${active ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/60 hover:text-foreground"}`}
+      >
+        <button
+          onClick={() => {
+            if (deleteVisible) setDeleteVisible(false);
+            else onSelect();
+          }}
+          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+        >
+          <Bot className="size-4 shrink-0" />
+          <span className="truncate">{conversation.title}</span>
+        </button>
+        {conversation.pinned ? (
+          <Pin className="ml-auto size-3 text-violet-400" />
+        ) : null}
+        <button
+          onClick={onManage}
+          className="rounded p-0.5 lg:hidden"
+          aria-label={`Manage ${conversation.title}`}
+        >
+          <MoreHorizontal className="size-3.5" />
+        </button>
+        <button
+          onClick={onManage}
+          className="hidden rounded p-0.5 lg:group-hover:block"
+          aria-label={`Manage ${conversation.title}`}
+        >
+          <MoreHorizontal className="size-3.5" />
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export function Sidebar({
   open,
@@ -33,6 +117,7 @@ export function Sidebar({
   onUsage,
   onMove,
   onManageConversation,
+  onDeleteConversation,
   onManageProject,
 }: {
   open: boolean;
@@ -51,6 +136,7 @@ export function Sidebar({
   onUsage: () => void;
   onMove: (conversationId: string, projectId: string | null) => void;
   onManageConversation: (conversation: Conversation) => void;
+  onDeleteConversation: (conversation: Conversation) => void;
   onManageProject: (project: Project) => void;
 }) {
   const visible = conversations.filter(
@@ -59,28 +145,14 @@ export function Sidebar({
   const pinned = visible.filter((c) => c.pinned);
   const recent = visible.filter((c) => !c.pinned);
   const item = (c: Conversation) => (
-    <div
-      draggable
-      onDragStart={(e) => e.dataTransfer.setData("text/conversation", c.id)}
+    <ChatRow
       key={c.id}
-      className={`group flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm ${activeId === c.id ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/60 hover:text-foreground"}`}
-    >
-      <button
-        onClick={() => onSelect(c)}
-        className="flex min-w-0 flex-1 items-center gap-2 text-left"
-      >
-        <Bot className="size-4 shrink-0" />
-        <span className="truncate">{c.title}</span>
-      </button>
-      {c.pinned ? <Pin className="ml-auto size-3 text-violet-400" /> : null}
-      <button
-        onClick={() => onManageConversation(c)}
-        className="hidden rounded p-0.5 group-hover:block"
-        aria-label={`Manage ${c.title}`}
-      >
-        <MoreHorizontal className="size-3.5" />
-      </button>
-    </div>
+      conversation={c}
+      active={activeId === c.id}
+      onSelect={() => onSelect(c)}
+      onManage={() => onManageConversation(c)}
+      onDelete={() => onDeleteConversation(c)}
+    />
   );
   return (
     <aside

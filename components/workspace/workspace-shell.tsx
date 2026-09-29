@@ -53,6 +53,7 @@ export function WorkspaceShell() {
   const [sidebar, setSidebar] = useState(false);
   const [ide, setIde] = useState(true);
   const [mobile, setMobile] = useState<"chat" | "code">("chat");
+  const [wideLayout, setWideLayout] = useState(false);
   const [settings, setSettings] = useState(false);
   const [usage, setUsage] = useState(false);
   const [search, setSearch] = useState("");
@@ -125,6 +126,13 @@ export function WorkspaceShell() {
     storedLocalWorkspace()
       .then(setLocalDirectory)
       .catch(() => setLocalDirectory(undefined));
+  }, []);
+  useEffect(() => {
+    const query = window.matchMedia("(min-width: 1024px)");
+    const update = () => setWideLayout(query.matches);
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
   }, []);
   useEffect(() => {
     if (!providerId) {
@@ -255,6 +263,17 @@ export function WorkspaceShell() {
       await action({ action: "update_conversation", id: chat.id, archived: 1 });
     } else if (choice === "delete" && confirm(`Delete “${chat.title}”?`)) {
       await action({ action: "delete_conversation", id: chat.id });
+    }
+    await load();
+  };
+  const deleteConversation = async (chat: Conversation) => {
+    if (!confirm(`Delete “${chat.title}”? This cannot be undone.`)) return;
+    await action({ action: "delete_conversation", id: chat.id });
+    if (activeId === chat.id) {
+      setActiveId(undefined);
+      setActiveProject(undefined);
+      setActiveFile(undefined);
+      setMobile("chat");
     }
     await load();
   };
@@ -531,6 +550,36 @@ export function WorkspaceShell() {
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
+  const chatView = (
+    <ChatPane
+      conversation={conversation}
+      messages={data.messages}
+      providers={data.providers}
+      models={models}
+      modelLoading={modelsLoading}
+      selectedProvider={providerId}
+      selectedModel={modelId}
+      onProvider={(id) => {
+        setProviderId(id);
+        setModelId(undefined);
+      }}
+      onModel={setModelId}
+      onSend={send}
+      onStop={() => abort.current?.abort()}
+      onMenu={() => setSidebar(true)}
+      onToggleIde={() => {
+        setIde(true);
+        setMobile("code");
+      }}
+      onOpenWorkspace={() => {
+        setIde(true);
+        setMobile("code");
+      }}
+      generating={generating}
+      projectMode={projectMode}
+      onUpload={upload}
+    />
+  );
   if (loading)
     return (
       <div className="grid h-dvh place-items-center bg-background">
@@ -556,6 +605,7 @@ export function WorkspaceShell() {
           onSettings={() => setSettings(true)}
           onUsage={() => setUsage(true)}
           onManageConversation={manageConversation}
+          onDeleteConversation={deleteConversation}
           onManageProject={manageProject}
           onMove={async (id, targetId) => {
             const isProject = data.projects.some(
@@ -571,68 +621,43 @@ export function WorkspaceShell() {
             await load();
           }}
         />
-        <div
-          className={`${mobile === "chat" ? "block" : "hidden"} min-w-0 flex-1 lg:block`}
-        >
-          <ResizablePanelGroup orientation="horizontal">
-            <ResizablePanel
-              defaultSize={projectMode && ide ? 56 : 100}
-              minSize={35}
-            >
-              <ChatPane
-                conversation={conversation}
-                messages={data.messages}
-                providers={data.providers}
-                models={models}
-                modelLoading={modelsLoading}
-                selectedProvider={providerId}
-                selectedModel={modelId}
-                onProvider={(id) => {
-                  setProviderId(id);
-                  setModelId(undefined);
-                }}
-                onModel={setModelId}
-                onSend={send}
-                onStop={() => abort.current?.abort()}
-                onMenu={() => setSidebar(true)}
-                onToggleIde={() => setIde(!ide)}
-                onOpenWorkspace={() => {
-                  setIde(true);
-                  setMobile("code");
-                }}
-                generating={generating}
-                projectMode={projectMode}
-                onUpload={upload}
-              />
-            </ResizablePanel>
-            {projectMode && ide && (
-              <>
-                <ResizableHandle withHandle />
-                <ResizablePanel defaultSize={44} minSize={30}>
-                  <IdePane
-                    files={data.files}
-                    changes={data.changes}
-                    activeFile={activeFile}
-                    setActiveFile={setActiveFile}
-                    onSave={saveFile}
-                    onCreate={createFile}
-                    onDelete={deleteFile}
-                    onRename={renameFile}
-                    onResolve={resolve}
-                    onResolveAll={resolveAll}
-                    onCommit={commit}
-                    onClose={() => {
-                      setIde(false);
-                      setMobile("chat");
-                    }}
-                  />
-                </ResizablePanel>
-              </>
-            )}
-          </ResizablePanelGroup>
-        </div>
-        {mobile === "code" && projectMode && (
-          <div className="min-w-0 flex-1 lg:hidden">
+        {wideLayout ? (
+          <div className="min-w-0 flex-1">
+            <ResizablePanelGroup orientation="horizontal">
+              <ResizablePanel
+                defaultSize={projectMode && ide ? 56 : 100}
+                minSize={35}
+              >
+                {chatView}
+              </ResizablePanel>
+              {projectMode && ide && (
+                <>
+                  <ResizableHandle withHandle />
+                  <ResizablePanel defaultSize={44} minSize={30}>
+                    <IdePane
+                      files={data.files}
+                      changes={data.changes}
+                      activeFile={activeFile}
+                      setActiveFile={setActiveFile}
+                      onSave={saveFile}
+                      onCreate={createFile}
+                      onDelete={deleteFile}
+                      onRename={renameFile}
+                      onResolve={resolve}
+                      onResolveAll={resolveAll}
+                      onCommit={commit}
+                      onClose={() => {
+                        setIde(false);
+                        setMobile("chat");
+                      }}
+                    />
+                  </ResizablePanel>
+                </>
+              )}
+            </ResizablePanelGroup>
+          </div>
+        ) : mobile === "code" && projectMode ? (
+          <div className="min-w-0 flex-1">
             <IdePane
               files={data.files}
               changes={data.changes}
@@ -648,6 +673,8 @@ export function WorkspaceShell() {
               onClose={() => setMobile("chat")}
             />
           </div>
+        ) : (
+          <div className="min-w-0 flex-1">{chatView}</div>
         )}
       </div>
       {projectMode && (
