@@ -70,6 +70,7 @@ export function WorkspaceShell() {
   const [providerId, setProviderId] = useState<string>();
   const [modelId, setModelId] = useState<string>();
   const [generating, setGenerating] = useState(false);
+  const [colonyEnabled, setColonyEnabled] = useState(false);
   const [localDirectory, setLocalDirectory] = useState<LocalDirectoryHandle>();
   const abort = useRef<AbortController | null>(null);
   const conversation = data.conversations.find((c) => c.id === activeId);
@@ -112,6 +113,7 @@ export function WorkspaceShell() {
   const load = useCallback(async () => {
     const next = await fetchData();
     setData(next);
+    setColonyEnabled(Boolean(next.settings.agentColonyDefault));
     setLoading(false);
     if (next.providers.length === 0) setSettings(true);
     setProviderId((current) =>
@@ -393,6 +395,13 @@ export function WorkspaceShell() {
             modelId: requestModelId,
             ...(imageGeneration ? { prompt: text } : { message: text }),
             reasoning,
+            colony: {
+              enabled: colonyEnabled,
+              strategy: String(
+                data.settings.agentColonyStrategy || "balanced",
+              ),
+              maxWorkers: Number(data.settings.agentColonyMaxWorkers || 2),
+            },
           }),
           signal: abort.current.signal,
         },
@@ -422,15 +431,35 @@ export function WorkspaceShell() {
               text?: string;
               error?: string;
             };
-            if (event === "delta" && payload.text)
+            if (event === "status" && payload.text) {
+              const statusText = payload.text;
               setData((d) => ({
                 ...d,
                 messages: d.messages.map((m) =>
                   m.id === "streaming"
-                    ? { ...m, content: m.content + payload.text }
+                    ? { ...m, content: `_${statusText}_` }
                     : m,
                 ),
               }));
+            }
+            if (event === "delta" && payload.text) {
+              const deltaText = payload.text;
+              setData((d) => ({
+                ...d,
+                messages: d.messages.map((m) =>
+                  m.id === "streaming"
+                    ? {
+                        ...m,
+                        content:
+                          m.content.startsWith("_Coordinator") ||
+                          m.content.startsWith("_Running")
+                            ? deltaText
+                            : m.content + deltaText,
+                      }
+                    : m,
+                ),
+              }));
+            }
             if (event === "error")
               throw new Error(payload.error || "Generation failed");
           }
@@ -612,6 +641,15 @@ export function WorkspaceShell() {
       generating={generating}
       projectMode={projectMode}
       onUpload={upload}
+      colonyEnabled={colonyEnabled}
+      onColonyChange={(enabled) => {
+        setColonyEnabled(enabled);
+        void action({
+          action: "save_setting",
+          key: "agentColonyDefault",
+          value: enabled,
+        });
+      }}
     />
   );
   if (loading)

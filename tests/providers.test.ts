@@ -101,14 +101,14 @@ describe("provider adapters", () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({
-          choices: [
+          output: [
             {
-              message: {
-                tool_calls: [{ function: { arguments: JSON.stringify(args) } }],
-              },
+              type: "function_call",
+              name: "apply_workspace_changes",
+              arguments: JSON.stringify(args),
             },
           ],
-          usage: { prompt_tokens: 20, completion_tokens: 10 },
+          usage: { input_tokens: 20, output_tokens: 10 },
         }),
         { status: 200 },
       ),
@@ -123,21 +123,23 @@ describe("provider adapters", () => {
     const request = JSON.parse(
       String((fetchMock.mock.calls[0]?.[1] as RequestInit | undefined)?.body),
     ) as {
-      reasoning_effort?: string;
+      reasoning?: { effort: string };
+      input: Array<{ role: string; content: string }>;
       tools: Array<{
-        function: {
-          parameters: {
-            properties: {
-              operations: { items: { required: string[] } };
-            };
+        parameters: {
+          properties: {
+            operations: { items: { required: string[] } };
           };
         };
       }>;
     };
     expect(
-      request.tools[0].function.parameters.properties.operations.items.required,
+      request.tools[0].parameters.properties.operations.items.required,
     ).toEqual(["type", "path", "newPath", "content"]);
-    expect(request).not.toHaveProperty("reasoning_effort");
+    expect(request).not.toHaveProperty("reasoning");
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "https://api.openai.com/v1/responses",
+    );
     expect(result.operations).toEqual([
       { type: "create_file", path: "src/app.ts", content: "export {};" },
     ]);

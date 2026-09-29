@@ -573,6 +573,53 @@ export async function completeCoding(
       cachedTokens: data.usageMetadata?.cachedContentTokenCount ?? 0,
     });
   }
+  if (credential.type === "openai") {
+    const response = await checked(
+      await fetch(`${base(credential)}/responses`, {
+        method: "POST",
+        headers: headersFor(credential),
+        body: JSON.stringify({
+          model,
+          input: messages,
+          tools: [
+            {
+              type: "function",
+              name: codingTool.name,
+              description: codingTool.description,
+              parameters: strictOpenAiCodingSchema,
+              strict: true,
+            },
+          ],
+          tool_choice: { type: "function", name: codingTool.name },
+          reasoning:
+            reasoning === "off" ? undefined : { effort: reasoning },
+        }),
+        signal,
+      }),
+    );
+    const data = (await response.json()) as {
+      output?: Array<{
+        type?: string;
+        name?: string;
+        arguments?: string;
+      }>;
+      usage?: {
+        input_tokens?: number;
+        output_tokens?: number;
+        input_tokens_details?: { cached_tokens?: number };
+      };
+    };
+    const raw = data.output?.find(
+      (item) =>
+        item.type === "function_call" && item.name === codingTool.name,
+    )?.arguments;
+    const input = raw ? (JSON.parse(raw) as Record<string, unknown>) : undefined;
+    return normalizeCoding(input, {
+      inputTokens: data.usage?.input_tokens ?? 0,
+      outputTokens: data.usage?.output_tokens ?? 0,
+      cachedTokens: data.usage?.input_tokens_details?.cached_tokens ?? 0,
+    });
+  }
   const tool = {
     type: "function",
     function: {
@@ -592,7 +639,7 @@ export async function completeCoding(
         tools: [tool],
         tool_choice: { type: "function", function: { name: codingTool.name } },
         reasoning_effort:
-          ["openai", "xai"].includes(credential.type) && reasoning !== "off"
+          credential.type === "xai" && reasoning !== "off"
             ? reasoning
             : undefined,
       }),

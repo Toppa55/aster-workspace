@@ -7,6 +7,7 @@ import {
   FolderCode,
   Image as ImageIcon,
   Menu,
+  Network,
   Paperclip,
   RefreshCw,
   Search,
@@ -38,6 +39,8 @@ export function ChatPane({
   generating,
   projectMode,
   onUpload,
+  colonyEnabled,
+  onColonyChange,
 }: {
   conversation?: Conversation;
   messages: Message[];
@@ -59,6 +62,8 @@ export function ChatPane({
   generating: boolean;
   projectMode: boolean;
   onUpload: (files: FileList) => void;
+  colonyEnabled: boolean;
+  onColonyChange: (enabled: boolean) => void;
 }) {
   const [draft, setDraft] = useState("");
   const [search, setSearch] = useState("");
@@ -153,7 +158,7 @@ export function ChatPane({
         </div>
       </header>
       {selected && (
-        <div className="flex h-8 shrink-0 items-center gap-3 border-b px-4 text-[11px] text-muted-foreground">
+        <div className="flex h-9 shrink-0 items-center gap-3 overflow-x-auto whitespace-nowrap border-b px-4 text-[11px] text-muted-foreground [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <span>
             {selected.capabilities.contextWindow
               ? `${Math.round(selected.capabilities.contextWindow / 1000)}K context`
@@ -167,6 +172,16 @@ export function ChatPane({
             </span>
           )}
           {selected.capabilities.tools && <span>Tools</span>}
+          <button
+            type="button"
+            onClick={() => onColonyChange(!colonyEnabled)}
+            className={`flex items-center gap-1 rounded border px-1.5 py-0.5 ${colonyEnabled ? "border-violet-400/60 bg-violet-500/10 text-violet-400" : "bg-card"}`}
+            title="Let the selected coordinator delegate bounded work to lower-cost models"
+            aria-pressed={colonyEnabled}
+          >
+            <Network className="size-3" />
+            Colony
+          </button>
           <span className="ml-auto capitalize">{selected.provider}</span>
           {selected.capabilities.reasoning && (
             <select

@@ -6,6 +6,33 @@ Astrid is a private, self-hostable AI workspace that keeps conversation and sour
 
 The software is provider-neutral. Users supply their own AI accounts and keys, own their data, and choose where to deploy it.
 
+## What genuinely makes Astrid different
+
+Astrid is not the first AI chat client, code editor, BYOK application, or
+multi-agent system. Its distinction is the way these pieces are combined around
+user ownership and an unusually strict artifact boundary:
+
+- **Code is an artifact, not chat formatting.** In project mode, models return
+  structured file operations. Source is staged as reviewable diffs in the IDE;
+  the chat stores only a concise explanation.
+- **The selected model can act as a manager, not the whole workforce.** Optional
+  Agent Colony mode lets the chosen high-capability coordinator decide whether
+  delegation is worthwhile, run bounded specialist tasks concurrently on
+  cheaper enabled models, and review the combined result itself.
+- **Delegation is visible and metered.** Astrid records every coordinator and
+  worker call against the actual provider/model usage ledger. It does not claim
+  savings when pricing is unknown, and it skips delegation when no suitable
+  worker exists or one direct call is more efficient.
+- **Provider accounts, data, and deployment remain yours.** Credentials are
+  encrypted server-side, providers are interchangeable behind one gateway, and
+  the same public codebase can run as an independent installation.
+
+Agent Colony is a practical first implementation, not a claim of autonomous
+general intelligence. Its current scope is one coordinator planning pass, up to
+four parallel workers, failure-tolerant collection, and one coordinator review.
+Real savings depend on the models, prompts, rate limits, and pricing selected by
+the user.
+
 ## Screenshot
 
 ![Astrid Workspace first-run chat interface](public/astrid-workspace.jpg)
@@ -21,6 +48,7 @@ The hosted instance is private by design: [open Astrid Workspace](https://astrid
 - Dynamic model discovery instead of a hardcoded model list
 - Settings-based model menu: all discovered models remain available while the chat selector defaults to a concise curated set
 - Manual model selection and optional Smart/Balanced routing across connected providers
+- Optional Agent Colony orchestration: coordinator planning, parallel lower-cost workers, coordinator review, and per-call usage accounting
 - Capability-aware model details and provider-specific reasoning effort controls
 - Persistent image generation through supported OpenAI GPT Image models, with private previews, downloads, usage, and cost records
 - AES-GCM encrypted provider keys; the client receives only masked key hints

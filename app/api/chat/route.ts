@@ -1,11 +1,20 @@
-import { completeCoding, streamChat } from "@/lib/ai/adapters";
+import { completeCoding, listModels, streamChat } from "@/lib/ai/adapters";
+import {
+  rankColonyCandidates,
+  runColony,
+  totalColonyUsage,
+  type ColonyCall,
+  type ColonyCandidate,
+  type ColonyStrategy,
+} from "@/lib/ai/colony";
 import { buildContext } from "@/lib/ai/context";
 import { ensureUsage, inferCapabilities, estimateCost } from "@/lib/ai/catalog";
+import { visibleModels } from "@/lib/ai/model-visibility";
 import { projectWorkspaceMessage } from "@/lib/ai/project-message";
 import type { CodingOperation, Usage } from "@/lib/ai/types";
 import { credentialFor } from "@/app/api/providers/route";
 import { requireUser } from "@/lib/server/auth";
-import { database, id, now } from "@/lib/server/db";
+import { database, id, now, rows } from "@/lib/server/db";
 import { githubContextForPrompt } from "@/lib/integrations/github-context";
 
 export const dynamic = "force-dynamic";
@@ -24,6 +33,11 @@ export async function POST(request: Request) {
     modelId?: string;
     message?: string;
     reasoning?: "off" | "low" | "medium" | "high";
+    colony?: {
+      enabled?: boolean;
+      strategy?: ColonyStrategy;
+      maxWorkers?: number;
+    };
   };
   if (
     !body.conversationId ||
@@ -82,8 +96,60 @@ export async function POST(request: Request) {
           .run();
         let responseText = "";
         let usage: Usage = { inputTokens: 0, outputTokens: 0, cachedTokens: 0 };
+        let colonyCalls: ColonyCall[] | undefined;
         const assistantId = id();
-        if (projectMode) {
+        const maxWorkers = Math.max(
+          1,
+          Math.min(4, Number(body.colony?.maxWorkers ?? 2)),
+        );
+        const candidates = body.colony?.enabled
+          ? await colonyCandidates(
+              user.id,
+              credential.id,
+              body.modelId!,
+              body.colony.strategy ?? "balanced",
+              maxWorkers,
+            )
+          : [];
+        const colony = body.colony?.enabled
+          ? await runColony({
+              coordinator: credential,
+              coordinatorModel: body.modelId!,
+              messages: context.messages,
+              prompt: body.message!,
+              reasoning: body.reasoning ?? (projectMode ? "medium" : "off"),
+              projectMode,
+              candidates,
+              maxWorkers,
+              signal: request.signal,
+              onStatus: (message) => send("status", { text: message }),
+            })
+          : { delegated: false as const, calls: [] };
+        if (colony.delegated) {
+          colonyCalls = colony.calls;
+          usage = totalColonyUsage(colony.calls);
+          if (projectMode && colony.coding) {
+            const changes = await stageOperations(
+              projectId!,
+              body.conversationId!,
+              assistantId,
+              colony.coding.operations,
+              time,
+            );
+            responseText = projectWorkspaceMessage(
+              colony.coding.operations,
+              changes,
+            );
+            send("changes", { count: changes });
+          } else {
+            responseText = colony.text ?? "";
+          }
+          const workerNames = colony.workers
+            .map((worker) => worker.model)
+            .join(", ");
+          responseText += `\n\n_Agent Colony: ${colony.workers.length} parallel worker${colony.workers.length === 1 ? "" : "s"} (${workerNames}); final review by ${body.modelId}._`;
+          send("delta", { text: responseText });
+        } else if (projectMode) {
           const result = await completeCoding(
             credential,
             body.modelId!,
@@ -116,10 +182,39 @@ export async function POST(request: Request) {
             } else usage = event.usage;
           }
         }
-        usage = ensureUsage(usage, context.messages, responseText);
+        if (!colony.delegated && colony.calls.length) {
+          const directUsage = ensureUsage(
+            usage,
+            context.messages,
+            responseText,
+          );
+          directUsage.costUsd ??= estimateCost(
+            directUsage,
+            inferCapabilities(credential.type, body.modelId!),
+          );
+          colonyCalls = [
+            ...colony.calls,
+            {
+              role: "coordinator",
+              provider: credential.type,
+              model: body.modelId!,
+              usage: directUsage,
+            },
+          ];
+          usage = totalColonyUsage(colonyCalls);
+        } else if (!colonyCalls)
+          usage = ensureUsage(usage, context.messages, responseText);
         const capabilities = inferCapabilities(credential.type, body.modelId!);
         const cost = usage.costUsd ?? estimateCost(usage, capabilities);
         const finish = now();
+        const usageCalls = colonyCalls ?? [
+          {
+            role: "coordinator" as const,
+            provider: credential.type,
+            model: body.modelId!,
+            usage: { ...usage, costUsd: cost },
+          },
+        ];
         await database().batch([
           database()
             .prepare(
@@ -139,24 +234,26 @@ export async function POST(request: Request) {
               finish,
               finish,
             ),
-          database()
-            .prepare(
-              "INSERT INTO usage_events (id,user_id,project_id,conversation_id,message_id,provider,model,input_tokens,cached_tokens,output_tokens,cost_usd,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-            )
-            .bind(
-              id(),
-              user.id,
-              projectId,
-              body.conversationId,
-              assistantId,
-              credential.type,
-              body.modelId,
-              usage.inputTokens,
-              usage.cachedTokens,
-              usage.outputTokens,
-              cost ?? null,
-              finish,
-            ),
+          ...usageCalls.map((call) =>
+            database()
+              .prepare(
+                "INSERT INTO usage_events (id,user_id,project_id,conversation_id,message_id,provider,model,input_tokens,cached_tokens,output_tokens,cost_usd,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+              )
+              .bind(
+                id(),
+                user.id,
+                projectId,
+                body.conversationId,
+                assistantId,
+                call.provider,
+                call.model,
+                call.usage.inputTokens,
+                call.usage.cachedTokens,
+                call.usage.outputTokens,
+                call.usage.costUsd ?? null,
+                finish,
+              ),
+          ),
           database()
             .prepare(
               "UPDATE conversations SET provider_id=?,model_id=?,title=CASE WHEN title IN ('New chat','Project chat') THEN ? ELSE title END,updated_at=? WHERE id=? AND user_id=?",
@@ -196,6 +293,61 @@ export async function POST(request: Request) {
       "x-accel-buffering": "no",
     },
   });
+}
+
+async function colonyCandidates(
+  userId: string,
+  coordinatorProviderId: string,
+  coordinatorModel: string,
+  strategy: ColonyStrategy,
+  limit: number,
+) {
+  const [providers, settingsRow] = await Promise.all([
+    rows<{ id: string }>(
+      database()
+        .prepare("SELECT id FROM providers WHERE user_id=? AND enabled=1")
+        .bind(userId),
+    ),
+    database()
+      .prepare(
+        "SELECT value FROM settings WHERE user_id=? AND key='enabledModels'",
+      )
+      .bind(userId)
+      .first<{ value: string }>(),
+  ]);
+  let visibility: unknown = undefined;
+  try {
+    visibility = settingsRow?.value ? JSON.parse(settingsRow.value) : undefined;
+  } catch {
+    visibility = undefined;
+  }
+  const groups = await Promise.all(
+    providers.map(async ({ id: providerId }) => {
+      try {
+        const credential = await credentialFor(userId, providerId);
+        const models = visibleModels(
+          providerId,
+          await listModels(credential),
+          visibility,
+        );
+        return models
+          .filter(
+            (model) =>
+              model.capabilities.streaming &&
+              !model.capabilities.imageGeneration &&
+              !(providerId === coordinatorProviderId &&
+                model.id === coordinatorModel),
+          )
+          .map<ColonyCandidate>((model) => ({
+            credential,
+            model: model.id,
+          }));
+      } catch {
+        return [];
+      }
+    }),
+  );
+  return rankColonyCandidates(groups.flat(), strategy).slice(0, limit);
 }
 
 async function stageOperations(

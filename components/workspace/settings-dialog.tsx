@@ -6,6 +6,7 @@ import {
   Loader2,
   Mail,
   Mic,
+  Network,
   FolderOpen,
   GitBranch,
   Plug,
@@ -121,6 +122,15 @@ export function SettingsDialog({
     String(settings.globalInstructions || ""),
   );
   const [budget, setBudget] = useState(String(settings.monthlyBudget ?? "20"));
+  const [agentColonyDefault, setAgentColonyDefault] = useState(
+    Boolean(settings.agentColonyDefault),
+  );
+  const [agentColonyStrategy, setAgentColonyStrategy] = useState(
+    String(settings.agentColonyStrategy || "balanced"),
+  );
+  const [agentColonyMaxWorkers, setAgentColonyMaxWorkers] = useState(
+    Number(settings.agentColonyMaxWorkers || 2),
+  );
   useEffect(() => {
     if (tab !== "models" || providers.length === 0) return;
     queueMicrotask(() => setModelsLoading(true));
@@ -221,6 +231,21 @@ export function SettingsDialog({
         action: "save_setting",
         key: "monthlyBudget",
         value: Number(budget) || 0,
+      }),
+      action({
+        action: "save_setting",
+        key: "agentColonyDefault",
+        value: agentColonyDefault,
+      }),
+      action({
+        action: "save_setting",
+        key: "agentColonyStrategy",
+        value: agentColonyStrategy,
+      }),
+      action({
+        action: "save_setting",
+        key: "agentColonyMaxWorkers",
+        value: agentColonyMaxWorkers,
       }),
     ]);
     toast.success("Preferences saved");
@@ -431,7 +456,16 @@ export function SettingsDialog({
               Voice input
             </button>
             <button
-              onClick={() => setTab("preferences")}
+              onClick={() => {
+                setTab("preferences");
+                setAgentColonyDefault(Boolean(settings.agentColonyDefault));
+                setAgentColonyStrategy(
+                  String(settings.agentColonyStrategy || "balanced"),
+                );
+                setAgentColonyMaxWorkers(
+                  Number(settings.agentColonyMaxWorkers || 2),
+                );
+              }}
               className={`shrink-0 snap-start whitespace-nowrap rounded-lg px-3 py-2 text-left text-sm ${tab === "preferences" ? "bg-accent font-medium" : "text-muted-foreground"}`}
             >
               Instructions
@@ -618,6 +652,70 @@ export function SettingsDialog({
                     A local estimate. Provider balances are never invented.
                   </span>
                 </label>
+                <div className="space-y-4 rounded-xl border bg-card p-4">
+                  <div>
+                    <h3 className="flex items-center gap-2 font-medium">
+                      <Network className="size-4 text-violet-400" /> Agent
+                      Colony
+                    </h3>
+                    <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                      The model selected in chat remains the coordinator. It
+                      may divide suitable work among lower-cost enabled models
+                      in parallel, then review the combined result itself.
+                    </p>
+                  </div>
+                  <label className="flex items-start gap-3 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={agentColonyDefault}
+                      onChange={(event) =>
+                        setAgentColonyDefault(event.target.checked)
+                      }
+                      className="mt-1"
+                    />
+                    <span>
+                      <span className="block font-medium">
+                        Enable by default
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        You can still switch Colony on or off from the chat
+                        toolbar.
+                      </span>
+                    </span>
+                  </label>
+                  <label className="block text-sm">
+                    Routing preference
+                    <select
+                      value={agentColonyStrategy}
+                      onChange={(event) =>
+                        setAgentColonyStrategy(event.target.value)
+                      }
+                      className="mt-1 w-full rounded-lg border bg-background px-3 py-2"
+                    >
+                      <option value="cheapest">Cheapest reliable workers</option>
+                      <option value="balanced">Balanced cost and capability</option>
+                      <option value="capable">Highest-capability workers</option>
+                    </select>
+                  </label>
+                  <label className="block text-sm">
+                    Maximum parallel workers: {agentColonyMaxWorkers}
+                    <input
+                      type="range"
+                      min="1"
+                      max="4"
+                      value={agentColonyMaxWorkers}
+                      onChange={(event) =>
+                        setAgentColonyMaxWorkers(Number(event.target.value))
+                      }
+                      className="mt-2 w-full accent-violet-500"
+                    />
+                  </label>
+                  <p className="text-xs leading-5 text-muted-foreground">
+                    Delegation adds API calls. Astrid skips it when the
+                    coordinator decides one direct response is more efficient,
+                    and every worker call is recorded in Usage.
+                  </p>
+                </div>
                 <button
                   onClick={savePrefs}
                   className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
