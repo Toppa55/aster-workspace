@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildTranscriptionPrompt,
+  estimateTranscriptionCost,
   parseLanguageHints,
   parseVoiceKeywords,
 } from "../lib/ai/transcription";
@@ -21,5 +22,9 @@ describe("voice transcription helpers", () => {
     const prompt = buildTranscriptionPrompt(true);
     expect(prompt).toContain("stutter");
     expect(prompt).toContain("Never add facts");
+  });
+
+  it("estimates gpt-transcribe usage by recording duration", () => {
+    expect(estimateTranscriptionCost("gpt-transcribe", 120)).toBeCloseTo(0.009);
   });
 });

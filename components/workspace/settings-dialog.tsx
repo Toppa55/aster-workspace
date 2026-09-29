@@ -4,10 +4,12 @@ import {
   ExternalLink,
   KeyRound,
   Loader2,
+  Mail,
   Mic,
   FolderOpen,
   GitBranch,
   Plug,
+  Search,
   Trash2,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -117,7 +119,7 @@ export function SettingsDialog({
   const [instructions, setInstructions] = useState(
     String(settings.globalInstructions || ""),
   );
-  const [budget, setBudget] = useState(String(settings.monthlyBudget || "20"));
+  const [budget, setBudget] = useState(String(settings.monthlyBudget ?? "20"));
   useEffect(() => {
     if (tab !== "models" || providers.length === 0) return;
     queueMicrotask(() => setModelsLoading(true));
@@ -927,6 +929,36 @@ export function SettingsDialog({
                       Open or create a project before choosing its repository.
                     </p>
                   )}
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-xl border bg-card p-4">
+                    <div className="flex items-center gap-3">
+                      <span className="grid size-10 place-items-center rounded-xl bg-foreground/10">
+                        <Mail className="size-5" />
+                      </span>
+                      <div>
+                        <div className="text-sm font-medium">Gmail</div>
+                        <div className="text-xs text-muted-foreground">
+                          Not connected yet · OAuth integration required
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="rounded-xl border bg-card p-4">
+                    <div className="flex items-center gap-3">
+                      <span className="grid size-10 place-items-center rounded-xl bg-foreground/10">
+                        <Search className="size-5" />
+                      </span>
+                      <div>
+                        <div className="text-sm font-medium">
+                          Live web search
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          Not connected yet · search provider required
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}

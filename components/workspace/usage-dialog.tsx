@@ -1,4 +1,5 @@
 "use client";
+import { ExternalLink } from "lucide-react";
 import {
   Bar,
   BarChart,
@@ -16,19 +17,28 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import type { UsageRow } from "./types";
+import { providerMetadata } from "@/lib/ai/catalog";
+import type { ProviderType } from "@/lib/ai/types";
 
 export function UsageDialog({
   open,
   onOpenChange,
   rows,
+  monthlyRows,
   budget,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   rows: UsageRow[];
+  monthlyRows: UsageRow[];
   budget: number;
 }) {
   const spend = rows.reduce((s, r) => s + Number(r.cost_usd || 0), 0);
+  const monthlySpend = monthlyRows.reduce(
+    (sum, row) => sum + Number(row.cost_usd || 0),
+    0,
+  );
+  const remaining = Math.max(0, budget - monthlySpend);
   const requests = rows.reduce((s, r) => s + Number(r.requests || 0), 0);
   const input = rows.reduce((s, r) => s + Number(r.input_tokens || 0), 0);
   const output = rows.reduce((s, r) => s + Number(r.output_tokens || 0), 0);
@@ -42,13 +52,13 @@ export function UsageDialog({
         <DialogHeader>
           <DialogTitle>Usage & costs</DialogTitle>
           <DialogDescription>
-            Reported token usage and locally estimated cost. Unknown model
-            prices remain unpriced.
+            Provider-reported tokens with locally calculated prices. Your
+            provider invoice remains the final amount.
           </DialogDescription>
         </DialogHeader>
         <div className="mt-2 grid gap-3 sm:grid-cols-4">
           {[
-            ["Total spend", `$${spend.toFixed(4)}`],
+            ["All-time spend", formatUsd(spend)],
             ["Requests", requests.toLocaleString()],
             ["Input tokens", input.toLocaleString()],
             ["Output tokens", output.toLocaleString()],
@@ -60,26 +70,39 @@ export function UsageDialog({
           ))}
         </div>
         <div className="mt-2 rounded-xl border bg-card p-4">
-          <div className="flex items-center">
+          <div className="flex items-center gap-4">
             <div>
-              <div className="font-medium">Monthly budget</div>
               <div className="text-sm text-muted-foreground">
-                Estimated remaining ${Math.max(0, budget - spend).toFixed(2)} of
-                ${budget.toFixed(2)}
+                Estimated remaining this month
+              </div>
+              <div className="mt-1 text-2xl font-semibold">
+                {formatUsd(remaining)}
+              </div>
+              <div className="mt-1 text-sm text-muted-foreground">
+                {formatUsd(monthlySpend)} used of {formatUsd(budget)} local
+                budget
               </div>
             </div>
             <div className="ml-auto text-sm font-medium">
-              {budget ? Math.min(100, (spend / budget) * 100).toFixed(0) : 0}%
+              {budget
+                ? Math.min(100, (monthlySpend / budget) * 100).toFixed(0)
+                : 0}
+              %
             </div>
           </div>
           <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
             <div
               className="h-full rounded-full bg-violet-500"
               style={{
-                width: `${budget ? Math.min(100, (spend / budget) * 100) : 0}%`,
+                width: `${budget ? Math.min(100, (monthlySpend / budget) * 100) : 0}%`,
               }}
             />
           </div>
+          <p className="mt-3 text-xs leading-5 text-muted-foreground">
+            This is a local spending limit, not your provider’s prepaid credit
+            balance. Check the provider billing page for the authoritative
+            balance.
+          </p>
         </div>
         <div className="mt-2 h-64 rounded-xl border bg-card p-4">
           <ResponsiveContainer width="100%" height="100%">
@@ -120,13 +143,46 @@ export function UsageDialog({
                       Number(r.input_tokens) + Number(r.output_tokens)
                     ).toLocaleString()}
                   </td>
-                  <td className="p-3">${Number(r.cost_usd || 0).toFixed(4)}</td>
+                  <td className="p-3">
+                    {r.priced === false
+                      ? "Unpriced"
+                      : formatUsd(Number(r.cost_usd || 0))}
+                    {r.estimated && r.priced !== false ? (
+                      <span className="ml-1 text-xs text-muted-foreground">
+                        est.
+                      </span>
+                    ) : null}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
+          <span className="text-muted-foreground">Actual balances:</span>
+          {[...new Set(rows.map((row) => row.provider))].map((provider) => {
+            const metadata = providerMetadata[provider as ProviderType];
+            if (!metadata?.billingUrl) return null;
+            return (
+              <a
+                key={provider}
+                href={metadata.billingUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 hover:bg-accent"
+              >
+                {metadata.name} billing <ExternalLink className="size-3" />
+              </a>
+            );
+          })}
+        </div>
       </DialogContent>
     </Dialog>
   );
+}
+
+function formatUsd(value: number) {
+  if (value > 0 && value < 0.0001) return "<$0.0001";
+  if (value < 0.01) return `$${value.toFixed(6)}`;
+  return `$${value.toFixed(2)}`;
 }

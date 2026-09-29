@@ -20,14 +20,15 @@ export function VoiceInput({
   const recorder = useRef<MediaRecorder | null>(null);
   const stream = useRef<MediaStream | null>(null);
   const chunks = useRef<Blob[]>([]);
+  const elapsedSeconds = useRef(0);
   const stopTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (state !== "recording") return;
-    const interval = window.setInterval(
-      () => setSeconds((value) => value + 1),
-      1000,
-    );
+    const interval = window.setInterval(() => {
+      elapsedSeconds.current += 1;
+      setSeconds(elapsedSeconds.current);
+    }, 1000);
     return () => window.clearInterval(interval);
   }, [state]);
 
@@ -68,6 +69,7 @@ export function VoiceInput({
       };
       mediaRecorder.onstop = () => void transcribe(mediaRecorder.mimeType);
       mediaRecorder.start(1000);
+      elapsedSeconds.current = 0;
       setSeconds(0);
       setState("recording");
       stopTimer.current = setTimeout(
@@ -103,6 +105,10 @@ export function VoiceInput({
     try {
       const form = new FormData();
       form.set("audio", blob, fileNameFor(mimeType));
+      form.set(
+        "durationSeconds",
+        String(Math.max(1, elapsedSeconds.current)),
+      );
       const response = await fetch("/api/transcribe", {
         method: "POST",
         body: form,

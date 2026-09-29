@@ -366,7 +366,7 @@ function MessageView({
                 {message.input_tokens?.toLocaleString()} in ·{" "}
                 {message.output_tokens?.toLocaleString()} out
                 {message.cost_usd != null
-                  ? ` · ~$${Number(message.cost_usd).toFixed(4)}`
+                  ? ` · ~${formatMessageCost(Number(message.cost_usd))}`
                   : ""}
               </span>
             ) : null}
@@ -397,4 +397,9 @@ function MessageView({
       </div>
     </article>
   );
+}
+
+function formatMessageCost(value: number) {
+  if (value > 0 && value < 0.0001) return "<$0.0001";
+  return `$${value.toFixed(value < 0.01 ? 6 : 4)}`;
 }

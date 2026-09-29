@@ -1,11 +1,12 @@
 import { credentialFor } from "@/app/api/providers/route";
 import {
   buildTranscriptionPrompt,
+  estimateTranscriptionCost,
   parseLanguageHints,
   parseVoiceKeywords,
 } from "@/lib/ai/transcription";
 import { authError, requireUser } from "@/lib/server/auth";
-import { database, rows } from "@/lib/server/db";
+import { database, id, now, rows } from "@/lib/server/db";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +27,10 @@ export async function POST(request: Request) {
     const user = await requireUser();
     const form = await request.formData();
     const audio = form.get("audio");
+    const durationSeconds = Math.min(
+      300,
+      Math.max(1, Number(form.get("durationSeconds")) || 1),
+    );
     if (!(audio instanceof File))
       return Response.json(
         { error: "Audio recording is required" },
@@ -104,11 +109,20 @@ export async function POST(request: Request) {
     const text = result.text?.trim();
     if (!text)
       throw new Error("The recording did not contain recognizable speech");
+    const estimatedCost =
+      estimateTranscriptionCost(model, durationSeconds) ?? null;
+    await database()
+      .prepare(
+        "INSERT INTO usage_events (id,user_id,provider,model,input_tokens,cached_tokens,output_tokens,cost_usd,created_at) VALUES (?,?,?,?,0,0,0,?,?)",
+      )
+      .bind(id(), user.id, "openai", model, estimatedCost, now())
+      .run();
     return Response.json({
       text,
       provider: "openai",
       model,
       languages: result.languages ?? [],
+      costUsd: estimatedCost,
     });
   } catch (error) {
     return authError(error) ?? fail(error);

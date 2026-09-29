@@ -1,6 +1,6 @@
 import { completeCoding, streamChat } from "@/lib/ai/adapters";
 import { buildContext } from "@/lib/ai/context";
-import { inferCapabilities, estimateCost } from "@/lib/ai/catalog";
+import { ensureUsage, inferCapabilities, estimateCost } from "@/lib/ai/catalog";
 import { projectWorkspaceMessage } from "@/lib/ai/project-message";
 import type { CodingOperation, Usage } from "@/lib/ai/types";
 import { credentialFor } from "@/app/api/providers/route";
@@ -110,6 +110,7 @@ export async function POST(request: Request) {
             } else usage = event.usage;
           }
         }
+        usage = ensureUsage(usage, context.messages, responseText);
         const capabilities = inferCapabilities(credential.type, body.modelId!);
         const cost = usage.costUsd ?? estimateCost(usage, capabilities);
         const finish = now();

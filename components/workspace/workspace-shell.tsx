@@ -37,6 +37,7 @@ const empty: WorkspaceData = {
   providers: [],
   memories: [],
   usage: [],
+  monthlyUsage: [],
   settings: {},
   messages: [],
   files: [],
@@ -731,7 +732,8 @@ export function WorkspaceShell() {
         open={usage}
         onOpenChange={setUsage}
         rows={data.usage}
-        budget={Number(data.settings.monthlyBudget || 20)}
+        monthlyRows={data.monthlyUsage}
+        budget={Number(data.settings.monthlyBudget ?? 20)}
       />
     </main>
   );

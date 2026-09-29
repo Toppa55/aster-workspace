@@ -34,3 +34,11 @@ export function buildTranscriptionPrompt(cleanDictation: boolean) {
   if (!cleanDictation) return base;
   return `${base} The speaker may stutter, mumble, pause, repeat a syllable, or restart a short phrase. Produce clean readable dictation by removing accidental filler sounds, abandoned fragments, and duplicate stuttered words only when the intended meaning is clear. Never add facts or instructions the speaker did not say.`;
 }
+
+export function estimateTranscriptionCost(
+  model: string,
+  durationSeconds: number,
+) {
+  if (!model.startsWith("gpt-transcribe")) return undefined;
+  return (Math.max(0, durationSeconds) / 60) * 0.0045;
+}

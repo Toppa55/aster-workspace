@@ -49,13 +49,14 @@ export function inferCapabilities(
   id: string,
 ): ModelCapabilities {
   const value = id.toLowerCase();
-  const multimodal = /gpt-4|gpt-5|claude|gemini|grok|vision|vl/.test(value);
-  const reasoning = /reason|thinking|o[134]|gpt-5|claude|gemini|grok/.test(
+  const multimodal = /gpt-[456]|claude|gemini|grok|vision|vl/.test(value);
+  const reasoning = /reason|thinking|o[134]|gpt-[56]|claude|gemini|grok/.test(
     value,
   );
   const tools = !/embedding|moderation|tts|audio|image/.test(value);
   return {
     ...defaults,
+    ...priceForModel(provider, id),
     reasoning,
     vision: multimodal,
     files: multimodal,
@@ -63,6 +64,126 @@ export function inferCapabilities(
     structuredOutputs: tools,
     streaming: true,
   };
+}
+
+type ModelPrice = Pick<
+  ModelCapabilities,
+  | "inputPricePerMillion"
+  | "cachedInputPricePerMillion"
+  | "outputPricePerMillion"
+>;
+
+const pricingRules: Array<{
+  provider: ProviderType;
+  pattern: RegExp;
+  price: ModelPrice;
+}> = [
+  // Standard processing prices, USD per one million text tokens.
+  {
+    provider: "openai",
+    pattern: /(^|\/)gpt-6-astra(?:$|-)/,
+    price: price(10, 1, 50),
+  },
+  {
+    provider: "openai",
+    pattern: /(^|\/)gpt-6-sol(?:$|-)/,
+    price: price(2, 0.2, 10),
+  },
+  {
+    provider: "openai",
+    pattern: /(^|\/)gpt-6-luna(?:$|-)/,
+    price: price(0.1, 0.01, 0.5),
+  },
+  {
+    provider: "openai",
+    pattern: /(^|\/)gpt-5\.6-cyber(?:$|-)/,
+    price: price(12.5, 1.25, 75),
+  },
+  {
+    provider: "openai",
+    pattern: /(^|\/)gpt-5\.6-sol(?:$|-)/,
+    price: price(4, 0.4, 20),
+  },
+  {
+    provider: "openai",
+    pattern: /(^|\/)gpt-5\.6-terra(?:$|-)/,
+    price: price(2, 0.2, 12),
+  },
+  {
+    provider: "openai",
+    pattern: /(^|\/)gpt-5\.6-luna(?:$|-)/,
+    price: price(0.2, 0.02, 1.2),
+  },
+  {
+    provider: "openai",
+    pattern: /(^|\/)chat-latest(?:$|-)/,
+    price: price(5, 0.5, 30),
+  },
+  {
+    provider: "anthropic",
+    pattern: /claude-(?:sonnet-5|sonnet-4-6)/,
+    price: price(3, 0.3, 15),
+  },
+  {
+    provider: "anthropic",
+    pattern: /claude-(?:opus-5|opus-4-[678])/,
+    price: price(10, 1, 50),
+  },
+  {
+    provider: "anthropic",
+    pattern: /claude-haiku-4-5/,
+    price: price(1, 0.1, 5),
+  },
+  {
+    provider: "google",
+    pattern: /gemini-3\.8-flash/,
+    price: price(0.75, 0.075, 3.75),
+  },
+  {
+    provider: "google",
+    pattern: /gemini-3\.5-flash/,
+    price: price(1.5, 0.15, 9),
+  },
+  {
+    provider: "google",
+    pattern: /gemini-3\.1-flash-lite/,
+    price: price(0.25, 0.025, 1.5),
+  },
+  {
+    provider: "google",
+    pattern: /gemini-3\.1-flash/,
+    price: price(0.3, 0.03, 2.5),
+  },
+  { provider: "xai", pattern: /grok-4\.7/, price: price(2, 0.5, 6) },
+  {
+    provider: "xai",
+    pattern: /grok-(?:4\.3|4\.20)/,
+    price: price(1.25, 0.2, 2.5),
+  },
+];
+
+function price(
+  inputPricePerMillion: number,
+  cachedInputPricePerMillion: number,
+  outputPricePerMillion: number,
+): ModelPrice {
+  return {
+    inputPricePerMillion,
+    cachedInputPricePerMillion,
+    outputPricePerMillion,
+  };
+}
+
+export function priceForModel(
+  provider: ProviderType,
+  modelId: string,
+): ModelPrice {
+  return (
+    pricingRules.find(
+      (rule) =>
+        rule.provider === provider && rule.pattern.test(modelId.toLowerCase()),
+    )?.price ?? {}
+  );
 }
 
 export function priceFromOpenRouter(pricing?: {
@@ -93,4 +214,30 @@ export function estimateCost(
       1_000_000 +
     (usage.outputTokens * (caps.outputPricePerMillion ?? 0)) / 1_000_000
   );
+}
+
+export function ensureUsage(
+  usage: {
+    inputTokens: number;
+    outputTokens: number;
+    cachedTokens: number;
+    costUsd?: number;
+  },
+  messages: Array<{ content: string }>,
+  output: string,
+) {
+  return {
+    ...usage,
+    inputTokens:
+      usage.inputTokens > 0
+        ? usage.inputTokens
+        : estimateTokens(messages.map((message) => message.content).join("\n")),
+    outputTokens:
+      usage.outputTokens > 0 ? usage.outputTokens : estimateTokens(output),
+  };
+}
+
+function estimateTokens(text: string) {
+  if (!text) return 0;
+  return Math.max(1, Math.ceil(text.length / 4));
 }

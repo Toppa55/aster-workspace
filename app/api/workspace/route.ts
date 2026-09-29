@@ -1,5 +1,7 @@
 import { authError, requireUser } from "@/lib/server/auth";
 import { database, ensureUser, id, now, rows } from "@/lib/server/db";
+import { estimateCost, inferCapabilities } from "@/lib/ai/catalog";
+import type { ProviderType } from "@/lib/ai/types";
 
 export const dynamic = "force-dynamic";
 
@@ -11,51 +13,64 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const conversationId = url.searchParams.get("conversationId");
     const projectId = url.searchParams.get("projectId");
-    const [folders, projects, conversations, providers, memories, usage] =
-      await Promise.all([
-        rows(
-          db
-            .prepare(
-              "SELECT * FROM folders WHERE user_id=? ORDER BY sort_order,name",
-            )
-            .bind(user.id),
-        ),
-        rows(
-          db
-            .prepare(
-              "SELECT * FROM projects WHERE user_id=? ORDER BY updated_at DESC",
-            )
-            .bind(user.id),
-        ),
-        rows(
-          db
-            .prepare(
-              "SELECT * FROM conversations WHERE user_id=? ORDER BY pinned DESC,updated_at DESC LIMIT 250",
-            )
-            .bind(user.id),
-        ),
-        rows(
-          db
-            .prepare(
-              "SELECT id,type,name,base_url,key_hint,enabled,config,created_at,updated_at FROM providers WHERE user_id=? ORDER BY name",
-            )
-            .bind(user.id),
-        ),
-        rows(
-          db
-            .prepare(
-              "SELECT * FROM memories WHERE user_id=? ORDER BY updated_at DESC",
-            )
-            .bind(user.id),
-        ),
-        rows(
-          db
-            .prepare(
-              "SELECT provider,model,SUM(input_tokens) input_tokens,SUM(output_tokens) output_tokens,SUM(cached_tokens) cached_tokens,SUM(COALESCE(cost_usd,0)) cost_usd,COUNT(*) requests FROM usage_events WHERE user_id=? GROUP BY provider,model ORDER BY cost_usd DESC",
-            )
-            .bind(user.id),
-        ),
-      ]);
+    const monthStart = Date.UTC(
+      new Date().getUTCFullYear(),
+      new Date().getUTCMonth(),
+      1,
+    );
+    const [
+      folders,
+      projects,
+      conversations,
+      providers,
+      memories,
+      usageRaw,
+      monthlyUsageRaw,
+    ] = await Promise.all([
+      rows(
+        db
+          .prepare(
+            "SELECT * FROM folders WHERE user_id=? ORDER BY sort_order,name",
+          )
+          .bind(user.id),
+      ),
+      rows(
+        db
+          .prepare(
+            "SELECT * FROM projects WHERE user_id=? ORDER BY updated_at DESC",
+          )
+          .bind(user.id),
+      ),
+      rows(
+        db
+          .prepare(
+            "SELECT * FROM conversations WHERE user_id=? ORDER BY pinned DESC,updated_at DESC LIMIT 250",
+          )
+          .bind(user.id),
+      ),
+      rows(
+        db
+          .prepare(
+            "SELECT id,type,name,base_url,key_hint,enabled,config,created_at,updated_at FROM providers WHERE user_id=? ORDER BY name",
+          )
+          .bind(user.id),
+      ),
+      rows(
+        db
+          .prepare(
+            "SELECT * FROM memories WHERE user_id=? ORDER BY updated_at DESC",
+          )
+          .bind(user.id),
+      ),
+      rows(db.prepare(usageSummarySql()).bind(user.id)),
+      rows(
+        db
+          .prepare(usageSummarySql("AND created_at>=?"))
+          .bind(user.id, monthStart),
+      ),
+    ]);
+    const usage = priceUsageRows(usageRaw as UsageAggregate[]);
+    const monthlyUsage = priceUsageRows(monthlyUsageRaw as UsageAggregate[]);
     const settingsRows = await rows<{ key: string; value: string }>(
       db
         .prepare("SELECT key,value FROM settings WHERE user_id=?")
@@ -99,6 +114,7 @@ export async function GET(request: Request) {
       providers,
       memories,
       usage,
+      monthlyUsage,
       settings,
       messages,
       files,
@@ -107,6 +123,56 @@ export async function GET(request: Request) {
   } catch (error) {
     return authError(error) ?? fail(error);
   }
+}
+
+type UsageAggregate = {
+  provider: ProviderType;
+  model: string;
+  input_tokens: number;
+  output_tokens: number;
+  cached_tokens: number;
+  cost_usd: number;
+  unpriced_input_tokens: number;
+  unpriced_output_tokens: number;
+  unpriced_cached_tokens: number;
+  unpriced_requests: number;
+  requests: number;
+};
+
+function usageSummarySql(extra = "") {
+  return `SELECT provider,model,
+    SUM(input_tokens) input_tokens,
+    SUM(output_tokens) output_tokens,
+    SUM(cached_tokens) cached_tokens,
+    SUM(COALESCE(cost_usd,0)) cost_usd,
+    SUM(CASE WHEN cost_usd IS NULL THEN input_tokens ELSE 0 END) unpriced_input_tokens,
+    SUM(CASE WHEN cost_usd IS NULL THEN output_tokens ELSE 0 END) unpriced_output_tokens,
+    SUM(CASE WHEN cost_usd IS NULL THEN cached_tokens ELSE 0 END) unpriced_cached_tokens,
+    SUM(CASE WHEN cost_usd IS NULL THEN 1 ELSE 0 END) unpriced_requests,
+    COUNT(*) requests
+    FROM usage_events WHERE user_id=? ${extra}
+    GROUP BY provider,model ORDER BY cost_usd DESC`;
+}
+
+function priceUsageRows(values: UsageAggregate[]) {
+  return values
+    .map((row) => {
+      const estimated = estimateCost(
+        {
+          inputTokens: Number(row.unpriced_input_tokens || 0),
+          outputTokens: Number(row.unpriced_output_tokens || 0),
+          cachedTokens: Number(row.unpriced_cached_tokens || 0),
+        },
+        inferCapabilities(row.provider, row.model),
+      );
+      return {
+        ...row,
+        cost_usd: Number(row.cost_usd || 0) + (estimated ?? 0),
+        estimated: Number(row.unpriced_requests || 0) > 0,
+        priced: estimated != null || Number(row.unpriced_requests || 0) === 0,
+      };
+    })
+    .sort((a, b) => b.cost_usd - a.cost_usd);
 }
 
 export async function POST(request: Request) {

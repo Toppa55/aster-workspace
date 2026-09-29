@@ -92,6 +92,8 @@ export type UsageRow = {
   cached_tokens: number;
   cost_usd: number;
   requests: number;
+  estimated?: boolean;
+  priced?: boolean;
 };
 export type WorkspaceData = {
   user: { id: string; email?: string; name?: string };
@@ -101,6 +103,7 @@ export type WorkspaceData = {
   providers: Provider[];
   memories: Memory[];
   usage: UsageRow[];
+  monthlyUsage: UsageRow[];
   settings: Record<string, unknown>;
   messages: Message[];
   files: ProjectFile[];
