@@ -49,6 +49,32 @@ const codingTool = {
   },
 };
 
+const strictOpenAiCodingSchema = {
+  ...codingTool.input_schema,
+  properties: {
+    ...codingTool.input_schema.properties,
+    operations: {
+      ...codingTool.input_schema.properties.operations,
+      items: {
+        ...codingTool.input_schema.properties.operations.items,
+        properties: {
+          ...codingTool.input_schema.properties.operations.items.properties,
+          newPath: {
+            type: ["string", "null"],
+            description: "Destination path for rename_file; otherwise null.",
+          },
+          content: {
+            type: ["string", "null"],
+            description:
+              "Complete file contents for create_file or update_file; otherwise null.",
+          },
+        },
+        required: ["type", "path", "newPath", "content"],
+      },
+    },
+  },
+};
+
 function base(credential: ProviderCredential) {
   return (
     credential.baseUrl || providerMetadata[credential.type].baseUrl
@@ -479,7 +505,7 @@ export async function completeCoding(
     function: {
       name: codingTool.name,
       description: codingTool.description,
-      parameters: codingTool.input_schema,
+      parameters: strictOpenAiCodingSchema,
       strict: true,
     },
   };
@@ -543,11 +569,18 @@ function normalizeCoding(
         typeof (op as { type?: unknown }).type === "string" &&
         typeof (op as { path?: unknown }).path === "string",
     )
-    .map((op) => ({
-      ...op,
-      path: safePath(op.path),
-      ...(op.newPath ? { newPath: safePath(op.newPath) } : {}),
-    })) as CodingResult["operations"];
+    .flatMap((op): CodingResult["operations"] => {
+      const path = safePath(op.path);
+      if (op.type === "delete_file") return [{ type: op.type, path }];
+      if (op.type === "rename_file" && typeof op.newPath === "string")
+        return [{ type: op.type, path, newPath: safePath(op.newPath) }];
+      if (
+        (op.type === "create_file" || op.type === "update_file") &&
+        typeof op.content === "string"
+      )
+        return [{ type: op.type, path, content: op.content }];
+      return [];
+    });
   return {
     operations,
     explanation: String(input.explanation ?? ""),

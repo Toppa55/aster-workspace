@@ -42,7 +42,7 @@ export async function buildContext(
       ? `Relevant memories:\n${memories.map((m) => `- ${m.content}`).join("\n")}`
       : "",
     projectId
-      ? "This is a coding project. Keep the chat response concise and conversational. Never include raw source code or fenced code blocks in user_message or explanation. Source changes must be returned only through the apply_workspace_changes tool."
+      ? "This is a coding project. Keep the chat response concise and conversational. Never include raw source code or fenced code blocks in user_message or explanation. Source changes must be returned only through the apply_workspace_changes tool. If the user asks only for inspection, review, explanation, or feedback, return an empty operations array and do not modify any files."
       : "",
     conversation.project_summary
       ? `Project summary: ${conversation.project_summary}`
@@ -61,13 +61,11 @@ export async function buildContext(
     files,
     messages: [
       { role: "system", content: instructions },
-      ...history
-        .reverse()
-        .map((m) => ({
-          role: (m.role === "assistant" ? "assistant" : "user") as
-            "assistant" | "user",
-          content: m.content,
-        })),
+      ...history.reverse().map((m) => ({
+        role: (m.role === "assistant" ? "assistant" : "user") as
+          "assistant" | "user",
+        content: m.content,
+      })),
       { role: "user", content: prompt },
     ],
   };

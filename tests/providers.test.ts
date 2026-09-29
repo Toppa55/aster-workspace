@@ -21,13 +21,11 @@ describe("provider adapters", () => {
   it("normalizes dynamic OpenAI model discovery", async () => {
     vi.stubGlobal(
       "fetch",
-      vi
-        .fn()
-        .mockResolvedValue(
-          new Response(JSON.stringify({ data: [{ id: "gpt-test" }] }), {
-            status: 200,
-          }),
-        ),
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ data: [{ id: "gpt-test" }] }), {
+          status: 200,
+        }),
+      ),
     );
     const models = await listModels(openai);
     expect(models[0]).toMatchObject({ id: "gpt-test", provider: "openai" });
@@ -42,14 +40,12 @@ describe("provider adapters", () => {
     ].join("");
     vi.stubGlobal(
       "fetch",
-      vi
-        .fn()
-        .mockResolvedValue(
-          new Response(events, {
-            status: 200,
-            headers: { "content-type": "text/event-stream" },
-          }),
-        ),
+      vi.fn().mockResolvedValue(
+        new Response(events, {
+          status: 200,
+          headers: { "content-type": "text/event-stream" },
+        }),
+      ),
     );
     const result: StreamEvent[] = [];
     for await (const event of streamChat(openai, "gpt-test", [
@@ -92,36 +88,51 @@ describe("provider adapters", () => {
   it("parses structured coding operations instead of chat code blocks", async () => {
     const args = {
       operations: [
-        { type: "create_file", path: "src/app.ts", content: "export {};" },
+        {
+          type: "create_file",
+          path: "src/app.ts",
+          content: "export {};",
+          newPath: null,
+        },
       ],
       explanation: "Created the entry point.",
       user_message: "Done. Review one new file in the workspace.",
     };
-    vi.stubGlobal(
-      "fetch",
-      vi
-        .fn()
-        .mockResolvedValue(
-          new Response(
-            JSON.stringify({
-              choices: [
-                {
-                  message: {
-                    tool_calls: [
-                      { function: { arguments: JSON.stringify(args) } },
-                    ],
-                  },
-                },
-              ],
-              usage: { prompt_tokens: 20, completion_tokens: 10 },
-            }),
-            { status: 200 },
-          ),
-        ),
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                tool_calls: [{ function: { arguments: JSON.stringify(args) } }],
+              },
+            },
+          ],
+          usage: { prompt_tokens: 20, completion_tokens: 10 },
+        }),
+        { status: 200 },
+      ),
     );
+    vi.stubGlobal("fetch", fetchMock);
     const result = await completeCoding(openai, "gpt-test", [
       { role: "user", content: "Build it" },
     ]);
+    const request = JSON.parse(
+      String((fetchMock.mock.calls[0]?.[1] as RequestInit | undefined)?.body),
+    ) as {
+      tools: Array<{
+        function: {
+          parameters: {
+            properties: {
+              operations: { items: { required: string[] } };
+            };
+          };
+        };
+      }>;
+    };
+    expect(
+      request.tools[0].function.parameters.properties.operations.items.required,
+    ).toEqual(["type", "path", "newPath", "content"]);
     expect(result.operations).toEqual([
       { type: "create_file", path: "src/app.ts", content: "export {};" },
     ]);
