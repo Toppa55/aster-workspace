@@ -34,10 +34,10 @@ declare global {
   }
 }
 
-const DB_NAME = "aster-local-workspace";
+const DB_NAME = "astrid-local-workspace";
 const STORE_NAME = "handles";
 const HANDLE_KEY = "workspace-root";
-const MANIFEST = ".aster-workspace.json";
+const MANIFEST = ".astrid-workspace.json";
 
 export function supportsLocalWorkspace() {
   return typeof window !== "undefined" && !!window.showDirectoryPicker;

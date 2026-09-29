@@ -1,11 +1,11 @@
 @echo off
 setlocal
 cd /d "%~dp0"
-title Aster Workspace
+title Astrid Workspace
 
 echo.
 echo ========================================
-echo          Starting Aster Workspace
+echo         Starting Astrid Workspace
 echo ========================================
 echo.
 
@@ -17,11 +17,11 @@ if errorlevel 1 (
   exit /b 1
 )
 
-node -e "const major=Number(process.versions.node.split('.')[0]);if(major<22){console.error('Aster requires Node.js 22 or newer. Installed: '+process.versions.node);process.exit(1)}"
+node -e "const major=Number(process.versions.node.split('.')[0]);if(major<22){console.error('Astrid requires Node.js 22 or newer. Installed: '+process.versions.node);process.exit(1)}"
 if errorlevel 1 goto :failed
 
 if not exist "node_modules" (
-  echo Installing Aster for the first time...
+  echo Installing Astrid for the first time...
   call npx --yes pnpm@11.25.0 install
   if errorlevel 1 goto :failed
 )
@@ -52,8 +52,8 @@ if not exist ".wrangler\.migration-0002" (
 )
 
 echo.
-echo Aster will open at http://localhost:5173
-echo Keep this window open while using Aster.
+echo Astrid will open at http://localhost:5173
+echo Keep this window open while using Astrid.
 echo Press Ctrl+C here when you want to stop it.
 echo.
 
@@ -63,6 +63,6 @@ exit /b 0
 
 :failed
 echo.
-echo Aster could not start. The error is shown above.
+echo Astrid could not start. The error is shown above.
 pause
 exit /b 1

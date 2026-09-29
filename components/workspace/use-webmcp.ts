@@ -43,7 +43,7 @@ export function useWebMcp(actions: {
             name: "create_chat",
             title: "Create chat",
             description:
-              "Create a new empty Aster conversation and make it the active view.",
+              "Create a new empty Astrid conversation and make it the active view.",
             inputSchema: {
               type: "object",
               properties: {},

@@ -308,7 +308,7 @@ export function IdePane({
               Commit
             </button>
             <span className="ml-auto">
-              {selected ? language(selected.path) : "Aster project"}
+              {selected ? language(selected.path) : "Astrid project"}
             </span>
           </div>
         </div>

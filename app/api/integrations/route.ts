@@ -174,7 +174,7 @@ async function publishSnapshot(options: {
           name: options.repo,
           private: options.privateRepo,
           auto_init: true,
-          description: "Published from Aster AI Workspace",
+          description: "Published from Astrid AI Workspace",
         }),
       },
     );
@@ -267,7 +267,7 @@ async function github<T = unknown>(
       authorization: `Bearer ${token}`,
       "content-type": "application/json",
       "x-github-api-version": "2026-03-10",
-      "user-agent": "aster-workspace",
+      "user-agent": "astrid-workspace",
       ...(init?.headers || {}),
     },
   });
@@ -288,7 +288,7 @@ async function githubMaybe<T>(token: string, path: string) {
       accept: "application/vnd.github+json",
       authorization: `Bearer ${token}`,
       "x-github-api-version": "2026-03-10",
-      "user-agent": "aster-workspace",
+      "user-agent": "astrid-workspace",
     },
   });
   if (response.status === 404) return null;

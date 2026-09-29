@@ -5,7 +5,7 @@ import {
 } from "../lib/integrations/github-selection";
 
 const repositories = [
-  { name: "aster-workspace", full_name: "Toppa55/aster-workspace" },
+  { name: "astrid-workspace", full_name: "Toppa55/astrid-workspace" },
 ];
 
 describe("GitHub context selection", () => {
@@ -18,18 +18,18 @@ describe("GitHub context selection", () => {
   it("selects a repository from a GitHub URL", () => {
     expect(
       repositoryFromPrompt(
-        "Inspect https://github.com/Toppa55/aster-workspace please",
+        "Inspect https://github.com/Toppa55/astrid-workspace please",
         repositories,
       )?.full_name,
-    ).toBe("Toppa55/aster-workspace");
+    ).toBe("Toppa55/astrid-workspace");
   });
 
   it("selects a repository by name", () => {
     expect(
       repositoryFromPrompt(
-        "Check aster-workspace for open issues",
+        "Check astrid-workspace for open issues",
         repositories,
       )?.full_name,
-    ).toBe("Toppa55/aster-workspace");
+    ).toBe("Toppa55/astrid-workspace");
   });
 });

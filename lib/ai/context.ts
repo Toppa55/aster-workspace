@@ -35,14 +35,14 @@ export async function buildContext(
   ]);
   const files = projectId ? await selectRelevantFiles(projectId, prompt) : [];
   const instructions = [
-    "You are Aster, a concise and capable personal AI assistant.",
+    "You are Astrid, a concise and capable personal AI assistant.",
     String(conversation.instructions || ""),
     String(conversation.project_instructions || ""),
     memories.length
       ? `Relevant memories:\n${memories.map((m) => `- ${m.content}`).join("\n")}`
       : "",
     projectId
-      ? "This is a coding project. Keep the chat response concise and conversational. Never include raw source code or fenced code blocks in user_message or explanation. Source changes must be returned only through the apply_workspace_changes tool. If the user asks only for inspection, review, explanation, or feedback, return an empty operations array and do not modify any files."
+      ? "This is a coding project. Keep the chat response concise and conversational. Never include raw source code or fenced code blocks in user_message or explanation. Source changes must be returned only through the apply_workspace_changes tool. If the user asks only for inspection, review, explanation, or feedback, return an empty operations array and do not modify any files. For CAD requests, prefer editable parametric source such as CadQuery or OpenSCAD. Shapr3D can import STEP; do not claim that a proprietary native .shapr file was generated unless a real converter produced it."
       : "",
     conversation.project_summary
       ? `Project summary: ${conversation.project_summary}`

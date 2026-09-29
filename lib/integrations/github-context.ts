@@ -35,7 +35,7 @@ export async function githubContextForPrompt(
     return {
       role: "system",
       content:
-        "GitHub was mentioned, but no GitHub connection is configured in Aster. Explain that the user can connect one under Settings → Connections.",
+        "GitHub was mentioned, but no GitHub connection is configured in Astrid. Explain that the user can connect one under Settings → Connections.",
     };
   }
 
@@ -72,7 +72,7 @@ export async function githubContextForPrompt(
     return {
       role: "system",
       content: [
-        "Aster has a working GitHub connection. The following is live data fetched server-side for this request.",
+        "Astrid has a working GitHub connection. The following is live data fetched server-side for this request.",
         "Never claim that GitHub is unavailable when this context is present. Answer from this data and be explicit about what was inspected.",
         "The GitHub token itself is never available to you. Do not request it from the user.",
         JSON.stringify(payload),
@@ -81,7 +81,7 @@ export async function githubContextForPrompt(
   } catch (error) {
     return {
       role: "system",
-      content: `Aster has a GitHub connection, but the live GitHub lookup failed for this request: ${safeError(error)}. Explain the failure without asking the user to paste a token.`,
+      content: `Astrid has a GitHub connection, but the live GitHub lookup failed for this request: ${safeError(error)}. Explain the failure without asking the user to paste a token.`,
     };
   }
 }
@@ -160,7 +160,7 @@ async function github<T>(integration: GitHubIntegration, path: string) {
     headers: {
       accept: "application/vnd.github+json",
       authorization: `Bearer ${integration.token}`,
-      "user-agent": "Aster-Workspace",
+      "user-agent": "Astrid-Workspace",
       "x-github-api-version": "2022-11-28",
     },
   });

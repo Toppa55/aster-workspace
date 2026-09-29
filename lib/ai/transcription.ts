@@ -8,7 +8,7 @@ export function parseLanguageHints(value: unknown) {
 
 export function parseVoiceKeywords(value: unknown) {
   const defaults = [
-    "Aster",
+    "Astrid",
     "OpenAI",
     "Anthropic",
     "Gemini",

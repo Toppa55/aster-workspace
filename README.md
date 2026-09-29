@@ -1,14 +1,16 @@
-# Aster Workspace
+# Astrid Workspace
 
-Aster is a private, self-hostable AI workspace that keeps conversation and source code in separate surfaces. It combines multi-provider BYOK chat, persistent projects, a Monaco-based coding workspace, structured AI file operations, cost tracking, memory, uploads, Git-style snapshots, exports, and an installable mobile PWA.
+![Astrid logo](public/astrid-logo.png)
+
+Astrid is a private, self-hostable AI workspace that keeps conversation and source code in separate surfaces. It combines multi-provider BYOK chat, persistent projects, a Monaco-based coding workspace, structured AI file operations, cost tracking, memory, uploads, Git-style snapshots, exports, and an installable mobile PWA.
 
 The software is provider-neutral. Users supply their own AI accounts and keys, own their data, and choose where to deploy it.
 
 ## Screenshot
 
-![Aster Workspace first-run chat interface](public/aster-workspace.jpg)
+![Astrid Workspace first-run chat interface](public/astrid-workspace.jpg)
 
-The hosted instance is private by design: [open Aster Workspace](https://aster-workspace.toppa.chatgpt.site). A signed-in owner then completes provider setup inside the app.
+The hosted instance is private by design: [open Astrid Workspace](https://astrid-workspace.toppa.chatgpt.site). A signed-in owner then completes provider setup inside the app.
 
 ## Highlights
 
@@ -69,8 +71,8 @@ Requirements: Node.js 22.13+, pnpm, and a Cloudflare-compatible local runtime.
 ### Windows one-click setup
 
 Extract the downloaded ZIP, install Node.js 22 or newer, then double-click
-`Start-Aster.bat`. On its first run it installs dependencies, creates a private
-encryption key, prepares the local database, starts Aster, and opens
+`Start-Astrid.bat`. On its first run it installs dependencies, creates a private
+encryption key, prepares the local database, starts Astrid, and opens
 `http://localhost:5173`. Later launches reuse the same local data and settings.
 
 No global pnpm or Corepack installation is required.
@@ -78,8 +80,8 @@ No global pnpm or Corepack installation is required.
 ### Manual setup
 
 ```bash
-git clone https://github.com/Toppa55/aster-workspace.git
-cd aster-workspace
+git clone https://github.com/Toppa55/astrid-workspace.git
+cd astrid-workspace
 pnpm install
 cp .env.example .env.local
 ```
@@ -138,7 +140,7 @@ Before deployment:
 - Keys are encrypted with AES-256-GCM and are decrypted only for an outbound provider request.
 - Provider keys never appear in bootstrap responses, browser storage, exports, analytics, or logs.
 - GitHub tokens use the same encrypted server-side storage and are never returned after saving.
-- Voice clips are sent only when the user taps the microphone and stops recording; Aster does not persist the recording or transcript separately from the editable prompt.
+- Voice clips are sent only when the user taps the microphone and stops recording; Astrid does not persist the recording or transcript separately from the editable prompt.
 - All data routes enforce server-side user ownership.
 - Project paths are normalized and reject traversal.
 - Uploads are allowlisted, size-limited, and stored outside the database.
@@ -187,4 +189,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). Keep provider-specific logic inside adap
 
 ## Licence
 
-[MIT](LICENSE)
+[MIT](LICENSE). Copyright remains with Thomas Stemmet; the MIT licence permits everyone to use, copy, modify, distribute, sublicense, and sell copies while retaining the copyright and permission notice.

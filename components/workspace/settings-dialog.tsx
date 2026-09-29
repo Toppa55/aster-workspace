@@ -373,7 +373,7 @@ export function SettingsDialog({
             branch: githubBranch,
             create: createGithubRepo,
             private: true,
-            message: `Update ${activeProjectName || "project"} from Aster`,
+            message: `Update ${activeProjectName || "project"} from Astrid`,
           }),
         },
       );
@@ -825,8 +825,8 @@ export function SettingsDialog({
                 <div>
                   <h3 className="font-medium">Local source folder</h3>
                   <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                    Aster keeps its secure cloud copy and mirrors applied source
-                    files into a folder you choose on this computer.
+                    Astrid keeps its secure cloud copy and mirrors applied
+                    source files into a folder you choose on this computer.
                   </p>
                 </div>
                 <div className="rounded-xl border bg-card p-4">
@@ -841,7 +841,7 @@ export function SettingsDialog({
                       <div className="text-xs text-muted-foreground">
                         {localFolderName
                           ? "Applied project files sync automatically"
-                          : "Choose one parent folder for all Aster projects"}
+                          : "Choose one parent folder for all Astrid projects"}
                       </div>
                     </div>
                   </div>
@@ -856,14 +856,14 @@ export function SettingsDialog({
                   {!localFolderSupported && (
                     <p className="mt-3 text-xs leading-5 text-amber-500">
                       Folder access is supported by Chrome and Edge on desktop.
-                      Mobile Safari still keeps the project safely inside Aster
+                      Mobile Safari still keeps the project safely inside Astrid
                       and can export it as a ZIP.
                     </p>
                   )}
                 </div>
                 <p className="text-xs leading-5 text-muted-foreground">
                   Your browser grants access only to the folder you select.
-                  Aster never receives or stores its full path.
+                  Astrid never receives or stores its full path.
                 </p>
               </div>
             )}
