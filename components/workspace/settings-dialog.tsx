@@ -97,6 +97,7 @@ export function SettingsDialog({
   const [githubRepo, setGithubRepo] = useState("");
   const [githubBranch, setGithubBranch] = useState("main");
   const [createGithubRepo, setCreateGithubRepo] = useState(true);
+  const [replacingGithub, setReplacingGithub] = useState(false);
   const [githubBusy, setGithubBusy] = useState(false);
   const [voiceProviderId, setVoiceProviderId] = useState(
     String(settings.voiceProviderId || ""),
@@ -286,6 +287,7 @@ export function SettingsDialog({
         body: JSON.stringify({ action: "save_github", token: githubToken }),
       });
       setGithubToken("");
+      setReplacingGithub(false);
       const result = await api<{ integrations: typeof integrations }>(
         "/api/integrations",
       );
@@ -303,6 +305,31 @@ export function SettingsDialog({
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "Could not connect GitHub",
+      );
+    } finally {
+      setGithubBusy(false);
+    }
+  };
+  const removeGithub = async () => {
+    const connection = integrations.find((item) => item.type === "github");
+    if (!connection || !confirm("Remove the saved GitHub connection?")) return;
+    setGithubBusy(true);
+    try {
+      await api("/api/integrations", {
+        method: "POST",
+        body: JSON.stringify({ action: "remove", id: connection.id }),
+      });
+      setIntegrations((current) =>
+        current.filter((item) => item.id !== connection.id),
+      );
+      setReplacingGithub(false);
+      setGithubToken("");
+      toast.success("GitHub connection removed");
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Could not remove GitHub connection",
       );
     } finally {
       setGithubBusy(false);
@@ -843,7 +870,8 @@ export function SettingsDialog({
                       </div>
                     </div>
                   </div>
-                  {!integrations.some((item) => item.type === "github") ? (
+                  {!integrations.some((item) => item.type === "github") ||
+                  replacingGithub ? (
                     <div className="mt-4 space-y-3">
                       <input
                         type="password"
@@ -862,8 +890,25 @@ export function SettingsDialog({
                         disabled={!githubToken || githubBusy}
                         className="w-full rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
                       >
-                        {githubBusy ? "Connecting…" : "Connect GitHub"}
+                        {githubBusy
+                          ? "Connecting…"
+                          : replacingGithub
+                            ? "Replace GitHub token"
+                            : "Connect GitHub"}
                       </button>
+                      {replacingGithub ? (
+                        <button
+                          type="button"
+                          disabled={githubBusy}
+                          onClick={() => {
+                            setReplacingGithub(false);
+                            setGithubToken("");
+                          }}
+                          className="w-full rounded-lg border px-3 py-2 text-sm font-medium disabled:opacity-50"
+                        >
+                          Cancel
+                        </button>
+                      ) : null}
                     </div>
                   ) : activeProjectId ? (
                     <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -925,9 +970,28 @@ export function SettingsDialog({
                       </p>
                     </div>
                   ) : (
-                    <p className="mt-4 text-sm text-muted-foreground">
-                      Open or create a project before choosing its repository.
-                    </p>
+                    <div className="mt-4 space-y-3">
+                      <p className="text-sm text-muted-foreground">
+                        Open or create a project before choosing its repository.
+                      </p>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setReplacingGithub(true)}
+                          className="rounded-lg border px-3 py-2 text-sm font-medium"
+                        >
+                          Replace token
+                        </button>
+                        <button
+                          type="button"
+                          disabled={githubBusy}
+                          onClick={() => void removeGithub()}
+                          className="rounded-lg border border-destructive/40 px-3 py-2 text-sm font-medium text-destructive disabled:opacity-50"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
                   )}
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
