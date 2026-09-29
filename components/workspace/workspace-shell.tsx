@@ -1,5 +1,11 @@
 "use client";
-import { Download, Loader2, PanelRight } from "lucide-react";
+import {
+  Download,
+  Loader2,
+  LogIn,
+  PanelRight,
+  ShieldCheck,
+} from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { zipSync, strToU8 } from "fflate";
@@ -13,7 +19,7 @@ import { ChatPane } from "./chat-pane";
 import { IdePane } from "./ide-pane";
 import { SettingsDialog } from "./settings-dialog";
 import { UsageDialog } from "./usage-dialog";
-import { action, api, download, providerAction } from "./client";
+import { action, api, ApiError, download, providerAction } from "./client";
 import type { Conversation, Message, Model, WorkspaceData } from "./types";
 import { useWebMcp } from "./use-webmcp";
 import {
@@ -48,6 +54,7 @@ const empty: WorkspaceData = {
 export function WorkspaceShell() {
   const [data, setData] = useState<WorkspaceData>(empty);
   const [loading, setLoading] = useState(true);
+  const [authRequired, setAuthRequired] = useState(false);
   const [activeId, setActiveId] = useState<string>();
   const [activeProject, setActiveProject] = useState<string>();
   const [activeFile, setActiveFile] = useState<string>();
@@ -118,7 +125,11 @@ export function WorkspaceShell() {
   useEffect(() => {
     queueMicrotask(() => {
       load().catch((e) => {
-        toast.error(e.message);
+        if (e instanceof ApiError && e.status === 401) {
+          setAuthRequired(true);
+        } else {
+          toast.error(e instanceof Error ? e.message : "Could not load Astrid");
+        }
         setLoading(false);
       });
     });
@@ -608,6 +619,35 @@ export function WorkspaceShell() {
       <div className="grid h-dvh place-items-center bg-background">
         <Loader2 className="size-6 animate-spin text-violet-400" />
       </div>
+    );
+  if (authRequired)
+    return (
+      <main className="grid min-h-dvh place-items-center bg-background px-5 py-10 text-foreground">
+        <section className="w-full max-w-md rounded-3xl border bg-card p-7 shadow-xl sm:p-9">
+          <div className="mb-6 grid size-12 place-items-center rounded-2xl bg-violet-500/10 text-violet-500">
+            <ShieldCheck className="size-6" />
+          </div>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            Sign back in to Astrid
+          </h1>
+          <p className="mt-3 leading-7 text-muted-foreground">
+            Your provider keys, GitHub connection, chats, and projects remain
+            encrypted on the server. Astrid cannot load them while you are
+            signed out.
+          </p>
+          <a
+            href="/signin-with-chatgpt?return_to=%2F"
+            target="_top"
+            className="mt-7 flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-violet-600 px-5 font-medium text-white transition hover:bg-violet-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+          >
+            <LogIn className="size-5" />
+            Sign in with ChatGPT
+          </a>
+          <p className="mt-4 text-center text-sm text-muted-foreground">
+            Use the same ChatGPT account you used when connecting your keys.
+          </p>
+        </section>
+      </main>
     );
   return (
     <main className="h-dvh overflow-hidden bg-background text-foreground">

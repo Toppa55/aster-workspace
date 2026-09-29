@@ -1,3 +1,13 @@
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
 export async function api<T = unknown>(
   path: string,
   init?: RequestInit,
@@ -8,9 +18,10 @@ export async function api<T = unknown>(
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok)
-    throw new Error(
+    throw new ApiError(
       (data as { error?: string }).error ||
         `Request failed (${response.status})`,
+      response.status,
     );
   return data as T;
 }
