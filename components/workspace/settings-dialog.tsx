@@ -4,6 +4,7 @@ import {
   ExternalLink,
   KeyRound,
   Loader2,
+  Mic,
   FolderOpen,
   GitBranch,
   Plug,
@@ -63,6 +64,7 @@ export function SettingsDialog({
   const [tab, setTab] = useState<
     | "providers"
     | "models"
+    | "voice"
     | "preferences"
     | "workspace"
     | "connections"
@@ -94,6 +96,21 @@ export function SettingsDialog({
   const [githubBranch, setGithubBranch] = useState("main");
   const [createGithubRepo, setCreateGithubRepo] = useState(true);
   const [githubBusy, setGithubBusy] = useState(false);
+  const [voiceProviderId, setVoiceProviderId] = useState(
+    String(settings.voiceProviderId || ""),
+  );
+  const [voiceModel, setVoiceModel] = useState(
+    String(settings.voiceTranscriptionModel || "gpt-transcribe"),
+  );
+  const [voiceLanguages, setVoiceLanguages] = useState(
+    String(settings.voiceLanguages || "en, af"),
+  );
+  const [voiceKeywords, setVoiceKeywords] = useState(
+    String(settings.voiceKeywords || ""),
+  );
+  const [voiceCleanDictation, setVoiceCleanDictation] = useState(
+    settings.voiceCleanDictation !== false,
+  );
   const [enabledModels, setEnabledModels] = useState<ModelVisibility>(() =>
     asVisibility(settings.enabledModels),
   );
@@ -228,6 +245,37 @@ export function SettingsDialog({
     toast.success("Model menu updated");
     onChanged();
   };
+  const saveVoice = async () => {
+    await Promise.all([
+      action({
+        action: "save_setting",
+        key: "voiceProviderId",
+        value: voiceProviderId,
+      }),
+      action({
+        action: "save_setting",
+        key: "voiceTranscriptionModel",
+        value: voiceModel.trim() || "gpt-transcribe",
+      }),
+      action({
+        action: "save_setting",
+        key: "voiceLanguages",
+        value: voiceLanguages,
+      }),
+      action({
+        action: "save_setting",
+        key: "voiceKeywords",
+        value: voiceKeywords,
+      }),
+      action({
+        action: "save_setting",
+        key: "voiceCleanDictation",
+        value: voiceCleanDictation,
+      }),
+    ]);
+    toast.success("Voice input settings saved");
+    onChanged();
+  };
   const saveGithub = async () => {
     setGithubBusy(true);
     try {
@@ -319,6 +367,19 @@ export function SettingsDialog({
               className={`rounded-lg px-3 py-2 text-left text-sm ${tab === "providers" ? "bg-accent font-medium" : "text-muted-foreground"}`}
             >
               AI Providers
+            </button>
+            <button
+              onClick={() => {
+                setTab("voice");
+                if (!voiceProviderId)
+                  setVoiceProviderId(
+                    providers.find((provider) => provider.type === "openai")
+                      ?.id || "",
+                  );
+              }}
+              className={`rounded-lg px-3 py-2 text-left text-sm ${tab === "voice" ? "bg-accent font-medium" : "text-muted-foreground"}`}
+            >
+              Voice input
             </button>
             <button
               onClick={() => setTab("preferences")}
@@ -513,6 +574,118 @@ export function SettingsDialog({
                   className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
                 >
                   Save preferences
+                </button>
+              </div>
+            )}
+            {tab === "voice" && (
+              <div className="space-y-5">
+                <div>
+                  <h3 className="flex items-center gap-2 font-medium">
+                    <Mic className="size-4" /> High-accuracy dictation
+                  </h3>
+                  <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                    Tap the microphone beside the prompt, speak naturally, then
+                    tap stop. The transcript remains editable and is never sent
+                    as a chat message until you press Send.
+                  </p>
+                </div>
+                <div className="space-y-4 rounded-xl border bg-card p-4">
+                  <label className="block text-sm">
+                    OpenAI connection
+                    <select
+                      value={voiceProviderId}
+                      onChange={(event) =>
+                        setVoiceProviderId(event.target.value)
+                      }
+                      className="mt-1 w-full rounded-lg border bg-background px-3 py-2"
+                    >
+                      <option value="">Choose a connection</option>
+                      {providers
+                        .filter(
+                          (provider) =>
+                            provider.type === "openai" && provider.enabled,
+                        )
+                        .map((provider) => (
+                          <option key={provider.id} value={provider.id}>
+                            {provider.name}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                  <label className="block text-sm">
+                    Transcription model
+                    <input
+                      value={voiceModel}
+                      onChange={(event) => setVoiceModel(event.target.value)}
+                      className="mt-1 w-full rounded-lg border bg-background px-3 py-2 font-mono text-sm"
+                    />
+                    <span className="mt-1 block text-xs text-muted-foreground">
+                      gpt-transcribe is the current recommended high-accuracy
+                      model. You can replace it without changing the app.
+                    </span>
+                  </label>
+                  <label className="block text-sm">
+                    Expected languages
+                    <input
+                      value={voiceLanguages}
+                      onChange={(event) =>
+                        setVoiceLanguages(event.target.value)
+                      }
+                      placeholder="en, af"
+                      className="mt-1 w-full rounded-lg border bg-background px-3 py-2"
+                    />
+                    <span className="mt-1 block text-xs text-muted-foreground">
+                      Comma-separated language codes. English and Afrikaans are
+                      enabled by default.
+                    </span>
+                  </label>
+                  <label className="block text-sm">
+                    Personal vocabulary
+                    <textarea
+                      rows={4}
+                      value={voiceKeywords}
+                      onChange={(event) => setVoiceKeywords(event.target.value)}
+                      placeholder="Names, business terms, software, places…"
+                      className="mt-1 w-full rounded-lg border bg-background p-3"
+                    />
+                    <span className="mt-1 block text-xs text-muted-foreground">
+                      Add names and unusual terms that the transcription should
+                      recognise accurately.
+                    </span>
+                  </label>
+                  <label className="flex items-start gap-3 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={voiceCleanDictation}
+                      onChange={(event) =>
+                        setVoiceCleanDictation(event.target.checked)
+                      }
+                      className="mt-1"
+                    />
+                    <span>
+                      <span className="block font-medium">
+                        Clean spoken dictation
+                      </span>
+                      <span className="text-xs leading-5 text-muted-foreground">
+                        Smooth accidental stutters, filler sounds and short
+                        false starts without changing the intended meaning.
+                      </span>
+                    </span>
+                  </label>
+                </div>
+                {providers.every((provider) => provider.type !== "openai") && (
+                  <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-500">
+                    Connect an OpenAI API key under AI Providers to enable
+                    high-accuracy voice input. The iPhone keyboard microphone
+                    remains available without it.
+                  </p>
+                )}
+                <button
+                  onClick={saveVoice}
+                  disabled={!voiceProviderId || !voiceModel.trim()}
+                  className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
+                >
+                  Save voice settings
                 </button>
               </div>
             )}

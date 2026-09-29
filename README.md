@@ -13,6 +13,7 @@ The hosted instance is private by design: [open Aster Workspace](https://aster-w
 ## Highlights
 
 - ChatGPT-style chat and project sidebar with folders, pinning, archive, search, rename, move, and drag-to-project behavior
+- Mobile-first voice composer with microphone cleanup, editable transcripts, English/Afrikaans hints, custom vocabulary, and server-side `gpt-transcribe`
 - Resizable desktop layout: sidebar, chat, and IDE; separate Chat/Code views on mobile
 - Real streaming adapters for OpenAI, Anthropic, Google Gemini, xAI, OpenRouter, Ollama, LM Studio, and custom OpenAI-compatible endpoints
 - Dynamic model discovery instead of a hardcoded model list
@@ -137,6 +138,7 @@ Before deployment:
 - Keys are encrypted with AES-256-GCM and are decrypted only for an outbound provider request.
 - Provider keys never appear in bootstrap responses, browser storage, exports, analytics, or logs.
 - GitHub tokens use the same encrypted server-side storage and are never returned after saving.
+- Voice clips are sent only when the user taps the microphone and stops recording; Aster does not persist the recording or transcript separately from the editable prompt.
 - All data routes enforce server-side user ownership.
 - Project paths are normalized and reject traversal.
 - Uploads are allowlisted, size-limited, and stored outside the database.

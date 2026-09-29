@@ -17,6 +17,7 @@ import { useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Conversation, Message, Model, Provider } from "./types";
+import { VoiceInput } from "./voice-input";
 
 export function ChatPane({
   conversation,
@@ -257,6 +258,14 @@ export function ChatPane({
               >
                 <Paperclip className="size-4" />
               </button>
+              <VoiceInput
+                disabled={generating || providers.length === 0}
+                onTranscript={(text) =>
+                  setDraft((current) =>
+                    current.trim() ? `${current.trimEnd()} ${text}` : text,
+                  )
+                }
+              />
               <span className="rounded-lg border px-2.5 py-1.5 text-xs text-muted-foreground">
                 {projectMode
                   ? "Relevant files selected automatically"
