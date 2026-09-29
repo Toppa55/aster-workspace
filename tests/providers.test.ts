@@ -85,7 +85,7 @@ describe("provider adapters", () => {
     });
   });
 
-  it("parses structured coding operations instead of chat code blocks", async () => {
+  it("parses structured coding operations without sending invalid reasoning values", async () => {
     const args = {
       operations: [
         {
@@ -114,13 +114,16 @@ describe("provider adapters", () => {
       ),
     );
     vi.stubGlobal("fetch", fetchMock);
-    const result = await completeCoding(openai, "gpt-test", [
-      { role: "user", content: "Build it" },
-    ]);
+    const result = await completeCoding(
+      openai,
+      "gpt-test",
+      [{ role: "user", content: "Build it" }],
+      "off",
+    );
     const request = JSON.parse(
       String((fetchMock.mock.calls[0]?.[1] as RequestInit | undefined)?.body),
     ) as {
-      reasoning_effort: string;
+      reasoning_effort?: string;
       tools: Array<{
         function: {
           parameters: {
@@ -134,7 +137,7 @@ describe("provider adapters", () => {
     expect(
       request.tools[0].function.parameters.properties.operations.items.required,
     ).toEqual(["type", "path", "newPath", "content"]);
-    expect(request.reasoning_effort).toBe("none");
+    expect(request).not.toHaveProperty("reasoning_effort");
     expect(result.operations).toEqual([
       { type: "create_file", path: "src/app.ts", content: "export {};" },
     ]);
