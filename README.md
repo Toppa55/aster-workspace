@@ -16,13 +16,16 @@ The hosted instance is private by design: [open Aster Workspace](https://aster-w
 - Resizable desktop layout: sidebar, chat, and IDE; separate Chat/Code views on mobile
 - Real streaming adapters for OpenAI, Anthropic, Google Gemini, xAI, OpenRouter, Ollama, LM Studio, and custom OpenAI-compatible endpoints
 - Dynamic model discovery instead of a hardcoded model list
+- Settings-based model menu: all discovered models remain available while the chat selector defaults to a concise curated set
 - Manual model selection and optional Smart/Balanced routing across connected providers
 - Capability-aware model details and provider-specific reasoning effort controls
 - AES-GCM encrypted provider keys; the client receives only masked key hints
 - Monaco editor, file tree, unsaved state, file operations, syntax highlighting, and side-by-side diffs
 - Structured `create_file`, `update_file`, `delete_file`, and `rename_file` AI operations
 - Apply/Reject per change, Apply All/Reject All, and optional automatic application
-- Strict project-mode separation: source is staged in the IDE, not dumped into chat
+- Automatic coding-intent routing: build requests become projects before the provider is called, so source is staged in the IDE instead of dumped into chat
+- Optional desktop folder mirroring through the browser File System Access API (Chrome/Edge)
+- Encrypted GitHub connection with real repository creation and snapshot commits
 - Relevant-file selection, conversation compaction, project summaries, and scoped memory
 - Token/cost ledger, budget tracking, provider/model usage dashboard, and response-level usage
 - R2-backed uploads, project source import, conversation Markdown/JSON exports, project ZIP export, and full data JSON backup
@@ -92,6 +95,7 @@ Build once, then apply every migration in `drizzle/` in filename order:
 pnpm build
 node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0000_thankful_blonde_phantom.sql
 node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0001_ancient_midnight.sql
+node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0002_clear_jean_grey.sql
 pnpm dev
 ```
 
@@ -132,6 +136,7 @@ Before deployment:
 
 - Keys are encrypted with AES-256-GCM and are decrypted only for an outbound provider request.
 - Provider keys never appear in bootstrap responses, browser storage, exports, analytics, or logs.
+- GitHub tokens use the same encrypted server-side storage and are never returned after saving.
 - All data routes enforce server-side user ownership.
 - Project paths are normalized and reject traversal.
 - Uploads are allowlisted, size-limited, and stored outside the database.
@@ -145,6 +150,8 @@ Review [SECURITY.md](SECURITY.md) before exposing an instance beyond a private a
 
 - Conversation → Markdown or JSON
 - Project source → ZIP
+- Applied project source → chosen desktop folder (supported desktop browsers)
+- Applied project source → GitHub repository and branch
 - Full user data → JSON from **Settings → Security**
 
 Full exports intentionally exclude provider secrets. Back up the D1 database, R2 bucket, and installation encryption key separately. Losing the encryption key makes stored provider credentials unrecoverable.

@@ -4,10 +4,12 @@ import {
   ExternalLink,
   KeyRound,
   Loader2,
+  FolderOpen,
+  GitBranch,
   Plug,
   Trash2,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -16,8 +18,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import type { Provider } from "./types";
-import { action, providerAction } from "./client";
+import type { Model, Provider } from "./types";
+import { action, api, providerAction } from "./client";
+import {
+  asVisibility,
+  curatedModelIds,
+  type ModelVisibility,
+} from "@/lib/ai/model-visibility";
 
 const providerTypes = [
   { id: "openai", name: "OpenAI" },
@@ -36,26 +43,113 @@ export function SettingsDialog({
   providers,
   onChanged,
   settings,
+  localFolderName,
+  localFolderSupported,
+  onChooseLocalFolder,
+  activeProjectId,
+  activeProjectName,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   providers: Provider[];
   onChanged: () => void;
   settings: Record<string, unknown>;
+  localFolderName?: string;
+  localFolderSupported: boolean;
+  onChooseLocalFolder: () => Promise<void>;
+  activeProjectId?: string;
+  activeProjectName?: string;
 }) {
-  const [tab, setTab] = useState<"providers" | "preferences" | "security">(
-    "providers",
-  );
+  const [tab, setTab] = useState<
+    | "providers"
+    | "models"
+    | "preferences"
+    | "workspace"
+    | "connections"
+    | "security"
+  >("providers");
   const [type, setType] = useState("openai");
   const [name, setName] = useState("OpenAI");
   const [key, setKey] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
   const [busy, setBusy] = useState(false);
   const [testing, setTesting] = useState<string>();
+  const [availableModels, setAvailableModels] = useState<
+    Record<string, Model[]>
+  >({});
+  const [modelsLoading, setModelsLoading] = useState(false);
+  const [modelSearch, setModelSearch] = useState("");
+  const [integrations, setIntegrations] = useState<
+    Array<{
+      id: string;
+      type: string;
+      name: string;
+      secret_hint: string;
+      config: string;
+    }>
+  >([]);
+  const [githubToken, setGithubToken] = useState("");
+  const [githubOwner, setGithubOwner] = useState("");
+  const [githubRepo, setGithubRepo] = useState("");
+  const [githubBranch, setGithubBranch] = useState("main");
+  const [createGithubRepo, setCreateGithubRepo] = useState(true);
+  const [githubBusy, setGithubBusy] = useState(false);
+  const [enabledModels, setEnabledModels] = useState<ModelVisibility>(() =>
+    asVisibility(settings.enabledModels),
+  );
   const [instructions, setInstructions] = useState(
     String(settings.globalInstructions || ""),
   );
   const [budget, setBudget] = useState(String(settings.monthlyBudget || "20"));
+  useEffect(() => {
+    if (tab !== "models" || providers.length === 0) return;
+    queueMicrotask(() => setModelsLoading(true));
+    Promise.all(
+      providers
+        .filter((provider) => provider.enabled)
+        .map(async (provider) => {
+          const result = await providerAction<{ models: Model[] }>({
+            action: "models",
+            id: provider.id,
+          });
+          return [provider.id, result.models] as const;
+        }),
+    )
+      .then((entries) => setAvailableModels(Object.fromEntries(entries)))
+      .catch((error) =>
+        toast.error(
+          error instanceof Error ? error.message : "Could not load models",
+        ),
+      )
+      .finally(() => setModelsLoading(false));
+  }, [tab, providers]);
+  useEffect(() => {
+    if (tab !== "connections") return;
+    api<{ integrations: typeof integrations }>("/api/integrations")
+      .then(({ integrations: next }) => {
+        setIntegrations(next);
+        const githubConnection = next.find((item) => item.type === "github");
+        if (githubConnection) {
+          const config = JSON.parse(githubConnection.config || "{}") as {
+            login?: string;
+          };
+          setGithubOwner((current) => current || config.login || "");
+        }
+      })
+      .catch((error) =>
+        toast.error(
+          error instanceof Error ? error.message : "Could not load connections",
+        ),
+      );
+  }, [tab]);
+  const modelCount = useMemo(
+    () =>
+      Object.values(availableModels).reduce(
+        (sum, list) => sum + list.length,
+        0,
+      ),
+    [availableModels],
+  );
   const save = async () => {
     setBusy(true);
     try {
@@ -112,6 +206,97 @@ export function SettingsDialog({
     toast.success("Preferences saved");
     onChanged();
   };
+  const effectiveSelection = (providerId: string) =>
+    Object.hasOwn(enabledModels, providerId)
+      ? enabledModels[providerId]
+      : curatedModelIds(availableModels[providerId] || []);
+  const toggleModel = (providerId: string, modelId: string) => {
+    const current = effectiveSelection(providerId);
+    setEnabledModels((value) => ({
+      ...value,
+      [providerId]: current.includes(modelId)
+        ? current.filter((id) => id !== modelId)
+        : [...current, modelId],
+    }));
+  };
+  const saveModels = async () => {
+    await action({
+      action: "save_setting",
+      key: "enabledModels",
+      value: enabledModels,
+    });
+    toast.success("Model menu updated");
+    onChanged();
+  };
+  const saveGithub = async () => {
+    setGithubBusy(true);
+    try {
+      await api("/api/integrations", {
+        method: "POST",
+        body: JSON.stringify({ action: "save_github", token: githubToken }),
+      });
+      setGithubToken("");
+      const result = await api<{ integrations: typeof integrations }>(
+        "/api/integrations",
+      );
+      setIntegrations(result.integrations);
+      const connected = result.integrations.find(
+        (item) => item.type === "github",
+      );
+      if (connected) {
+        const config = JSON.parse(connected.config || "{}") as {
+          login?: string;
+        };
+        setGithubOwner(config.login || "");
+      }
+      toast.success("GitHub connected");
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Could not connect GitHub",
+      );
+    } finally {
+      setGithubBusy(false);
+    }
+  };
+  const publishGithub = async () => {
+    const connection = integrations.find((item) => item.type === "github");
+    if (!connection || !activeProjectId) return;
+    setGithubBusy(true);
+    try {
+      const result = await api<{ url: string; files: number; branch: string }>(
+        "/api/integrations",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            action: "publish_github",
+            integrationId: connection.id,
+            projectId: activeProjectId,
+            owner: githubOwner,
+            repo: githubRepo,
+            branch: githubBranch,
+            create: createGithubRepo,
+            private: true,
+            message: `Update ${activeProjectName || "project"} from Aster`,
+          }),
+        },
+      );
+      toast.success(
+        `Pushed ${result.files} files to ${githubRepo}/${result.branch}`,
+        {
+          action: {
+            label: "Open commit",
+            onClick: () => window.open(result.url),
+          },
+        },
+      );
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "GitHub publish failed",
+      );
+    } finally {
+      setGithubBusy(false);
+    }
+  };
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[88dvh] overflow-hidden p-0 sm:max-w-3xl">
@@ -124,6 +309,12 @@ export function SettingsDialog({
         <div className="grid min-h-0 sm:grid-cols-[170px_1fr]">
           <nav className="flex gap-1 border-b p-3 sm:flex-col sm:border-b-0 sm:border-r">
             <button
+              onClick={() => setTab("models")}
+              className={`rounded-lg px-3 py-2 text-left text-sm ${tab === "models" ? "bg-accent font-medium" : "text-muted-foreground"}`}
+            >
+              Models
+            </button>
+            <button
               onClick={() => setTab("providers")}
               className={`rounded-lg px-3 py-2 text-left text-sm ${tab === "providers" ? "bg-accent font-medium" : "text-muted-foreground"}`}
             >
@@ -134,6 +325,28 @@ export function SettingsDialog({
               className={`rounded-lg px-3 py-2 text-left text-sm ${tab === "preferences" ? "bg-accent font-medium" : "text-muted-foreground"}`}
             >
               Instructions
+            </button>
+            <button
+              onClick={() => setTab("workspace")}
+              className={`rounded-lg px-3 py-2 text-left text-sm ${tab === "workspace" ? "bg-accent font-medium" : "text-muted-foreground"}`}
+            >
+              Local workspace
+            </button>
+            <button
+              onClick={() => {
+                setTab("connections");
+                if (!githubRepo && activeProjectName)
+                  setGithubRepo(
+                    activeProjectName
+                      .toLowerCase()
+                      .replace(/[^a-z0-9]+/g, "-")
+                      .replace(/^-|-$/g, "")
+                      .slice(0, 80),
+                  );
+              }}
+              className={`rounded-lg px-3 py-2 text-left text-sm ${tab === "connections" ? "bg-accent font-medium" : "text-muted-foreground"}`}
+            >
+              Connections
             </button>
             <button
               onClick={() => setTab("security")}
@@ -202,14 +415,15 @@ export function SettingsDialog({
                       Provider
                       <select
                         value={type}
-                  onChange={(e) => {
-                    const nextType = e.target.value;
-                    setType(nextType);
-                    setName(
-                      providerTypes.find((provider) => provider.id === nextType)
-                        ?.name || "Custom provider",
-                    );
-                  }}
+                        onChange={(e) => {
+                          const nextType = e.target.value;
+                          setType(nextType);
+                          setName(
+                            providerTypes.find(
+                              (provider) => provider.id === nextType,
+                            )?.name || "Custom provider",
+                          );
+                        }}
                         className="mt-1 w-full rounded-lg border bg-background px-3 py-2"
                       >
                         {providerTypes.map((p) => (
@@ -300,6 +514,247 @@ export function SettingsDialog({
                 >
                   Save preferences
                 </button>
+              </div>
+            )}
+            {tab === "models" && (
+              <div className="space-y-5">
+                <div>
+                  <h3 className="font-medium">Model menu</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Every model reported by your providers is available here.
+                    Tick only the models you want in the chat picker.
+                  </p>
+                </div>
+                <input
+                  value={modelSearch}
+                  onChange={(event) => setModelSearch(event.target.value)}
+                  placeholder="Search all models"
+                  className="w-full rounded-lg border bg-card px-3 py-2 text-sm"
+                />
+                {modelsLoading ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="size-4 animate-spin" /> Loading every
+                    provider model…
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {providers.map((provider) => {
+                      const list = (availableModels[provider.id] || []).filter(
+                        (model) =>
+                          `${model.name} ${model.id}`
+                            .toLowerCase()
+                            .includes(modelSearch.toLowerCase()),
+                      );
+                      const selected = new Set(effectiveSelection(provider.id));
+                      return (
+                        <section
+                          key={provider.id}
+                          className="rounded-xl border"
+                        >
+                          <div className="flex items-center border-b px-3 py-2">
+                            <span className="text-sm font-medium">
+                              {provider.name}
+                            </span>
+                            <span className="ml-auto text-xs text-muted-foreground">
+                              {selected.size} selected · {list.length} shown
+                            </span>
+                          </div>
+                          <div className="max-h-56 overflow-y-auto p-2">
+                            {list.map((model) => (
+                              <label
+                                key={model.id}
+                                className="flex cursor-pointer items-start gap-3 rounded-lg p-2 hover:bg-accent"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={selected.has(model.id)}
+                                  onChange={() =>
+                                    toggleModel(provider.id, model.id)
+                                  }
+                                  className="mt-1"
+                                />
+                                <span className="min-w-0">
+                                  <span className="block truncate text-sm">
+                                    {model.name}
+                                  </span>
+                                  <span className="block truncate font-mono text-[11px] text-muted-foreground">
+                                    {model.id}
+                                  </span>
+                                </span>
+                              </label>
+                            ))}
+                          </div>
+                        </section>
+                      );
+                    })}
+                  </div>
+                )}
+                <button
+                  onClick={saveModels}
+                  disabled={modelsLoading || modelCount === 0}
+                  className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
+                >
+                  Save model menu
+                </button>
+              </div>
+            )}
+            {tab === "workspace" && (
+              <div className="space-y-5">
+                <div>
+                  <h3 className="font-medium">Local source folder</h3>
+                  <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                    Aster keeps its secure cloud copy and mirrors applied source
+                    files into a folder you choose on this computer.
+                  </p>
+                </div>
+                <div className="rounded-xl border bg-card p-4">
+                  <div className="flex items-center gap-3">
+                    <span className="grid size-10 place-items-center rounded-xl bg-violet-500/10 text-violet-400">
+                      <FolderOpen className="size-5" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-medium">
+                        {localFolderName || "No folder selected"}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {localFolderName
+                          ? "Applied project files sync automatically"
+                          : "Choose one parent folder for all Aster projects"}
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={!localFolderSupported}
+                    onClick={() => void onChooseLocalFolder()}
+                    className="mt-4 w-full rounded-lg border px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {localFolderName ? "Change folder" : "Choose folder"}
+                  </button>
+                  {!localFolderSupported && (
+                    <p className="mt-3 text-xs leading-5 text-amber-500">
+                      Folder access is supported by Chrome and Edge on desktop.
+                      Mobile Safari still keeps the project safely inside Aster
+                      and can export it as a ZIP.
+                    </p>
+                  )}
+                </div>
+                <p className="text-xs leading-5 text-muted-foreground">
+                  Your browser grants access only to the folder you select.
+                  Aster never receives or stores its full path.
+                </p>
+              </div>
+            )}
+            {tab === "connections" && (
+              <div className="space-y-5">
+                <div>
+                  <h3 className="font-medium">Connected services</h3>
+                  <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                    Connect external services without exposing their credentials
+                    to the browser or an AI provider.
+                  </p>
+                </div>
+                <div className="rounded-xl border bg-card p-4">
+                  <div className="flex items-center gap-3">
+                    <span className="grid size-10 place-items-center rounded-xl bg-foreground/10">
+                      <GitBranch className="size-5" />
+                    </span>
+                    <div>
+                      <div className="text-sm font-medium">GitHub</div>
+                      <div className="text-xs text-muted-foreground">
+                        {integrations.find((item) => item.type === "github")
+                          ? `${integrations.find((item) => item.type === "github")?.secret_hint} · Connected`
+                          : "Push applied workspace files to a repository"}
+                      </div>
+                    </div>
+                  </div>
+                  {!integrations.some((item) => item.type === "github") ? (
+                    <div className="mt-4 space-y-3">
+                      <input
+                        type="password"
+                        autoComplete="off"
+                        value={githubToken}
+                        onChange={(event) => setGithubToken(event.target.value)}
+                        placeholder="Fine-grained GitHub token"
+                        className="w-full rounded-lg border bg-background px-3 py-2 text-sm"
+                      />
+                      <p className="text-xs leading-5 text-muted-foreground">
+                        Grant repository Contents: read and write. The token is
+                        encrypted at rest and never returned after saving.
+                      </p>
+                      <button
+                        onClick={saveGithub}
+                        disabled={!githubToken || githubBusy}
+                        className="w-full rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
+                      >
+                        {githubBusy ? "Connecting…" : "Connect GitHub"}
+                      </button>
+                    </div>
+                  ) : activeProjectId ? (
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                      <label className="text-sm">
+                        Owner
+                        <input
+                          value={githubOwner}
+                          onChange={(event) =>
+                            setGithubOwner(event.target.value)
+                          }
+                          className="mt-1 w-full rounded-lg border bg-background px-3 py-2"
+                        />
+                      </label>
+                      <label className="text-sm">
+                        Repository
+                        <input
+                          value={githubRepo}
+                          onChange={(event) =>
+                            setGithubRepo(event.target.value)
+                          }
+                          className="mt-1 w-full rounded-lg border bg-background px-3 py-2"
+                        />
+                      </label>
+                      <label className="text-sm sm:col-span-2">
+                        Branch
+                        <input
+                          value={githubBranch}
+                          onChange={(event) =>
+                            setGithubBranch(event.target.value)
+                          }
+                          className="mt-1 w-full rounded-lg border bg-background px-3 py-2"
+                        />
+                      </label>
+                      <label className="flex items-center gap-2 text-sm sm:col-span-2">
+                        <input
+                          type="checkbox"
+                          checked={createGithubRepo}
+                          onChange={(event) =>
+                            setCreateGithubRepo(event.target.checked)
+                          }
+                        />
+                        Create a private repository if it does not exist
+                      </label>
+                      <button
+                        onClick={publishGithub}
+                        disabled={
+                          githubBusy ||
+                          !githubOwner ||
+                          !githubRepo ||
+                          !githubBranch
+                        }
+                        className="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50 sm:col-span-2"
+                      >
+                        {githubBusy ? "Publishing…" : "Push project to GitHub"}
+                      </button>
+                      <p className="text-xs leading-5 text-muted-foreground sm:col-span-2">
+                        Publishing replaces the repository branch snapshot with
+                        the applied files currently visible in this workspace.
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="mt-4 text-sm text-muted-foreground">
+                      Open or create a project before choosing its repository.
+                    </p>
+                  )}
+                </div>
               </div>
             )}
             {tab === "security" && (

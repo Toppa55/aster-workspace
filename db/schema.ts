@@ -45,6 +45,21 @@ export const providers = sqliteTable(
   },
   (t) => [index("idx_providers_user").on(t.userId)],
 );
+export const integrations = sqliteTable(
+  "integrations",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull(),
+    type: text("type").notNull(),
+    name: text("name").notNull(),
+    encryptedSecret: text("encrypted_secret").notNull(),
+    secretHint: text("secret_hint").notNull(),
+    config: text("config").notNull().default("{}"),
+    enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+    ...timestamps,
+  },
+  (t) => [index("idx_integrations_user_type").on(t.userId, t.type)],
+);
 export const folders = sqliteTable(
   "folders",
   {

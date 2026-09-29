@@ -16,6 +16,18 @@ import { UsageDialog } from "./usage-dialog";
 import { action, api, download, providerAction } from "./client";
 import type { Conversation, Message, Model, WorkspaceData } from "./types";
 import { useWebMcp } from "./use-webmcp";
+import {
+  chooseLocalWorkspace,
+  storedLocalWorkspace,
+  supportsLocalWorkspace,
+  syncProjectToLocal,
+  type LocalDirectoryHandle,
+} from "./local-workspace";
+import {
+  isCodingWorkspaceRequest,
+  projectNameFromPrompt,
+} from "@/lib/ai/coding-intent";
+import { visibleModels } from "@/lib/ai/model-visibility";
 
 const empty: WorkspaceData = {
   user: { id: "" },
@@ -48,6 +60,7 @@ export function WorkspaceShell() {
   const [providerId, setProviderId] = useState<string>();
   const [modelId, setModelId] = useState<string>();
   const [generating, setGenerating] = useState(false);
+  const [localDirectory, setLocalDirectory] = useState<LocalDirectoryHandle>();
   const abort = useRef<AbortController | null>(null);
   const conversation = data.conversations.find((c) => c.id === activeId);
   const projectMode = !!activeProject;
@@ -75,11 +88,16 @@ export function WorkspaceShell() {
           (current) => c.provider_id || current || detail.providers[0]?.id,
         );
         if (detail.files[0]) setActiveFile(detail.files[0].path);
+        const project = detail.projects.find(
+          (item) => item.id === c.project_id,
+        );
+        if (localDirectory && project)
+          await syncProjectToLocal(localDirectory, project, detail.files);
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Could not load chat");
       }
     },
-    [fetchData],
+    [fetchData, localDirectory],
   );
   const load = useCallback(async () => {
     const next = await fetchData();
@@ -103,6 +121,11 @@ export function WorkspaceShell() {
     });
   }, [load]);
   useEffect(() => {
+    storedLocalWorkspace()
+      .then(setLocalDirectory)
+      .catch(() => setLocalDirectory(undefined));
+  }, []);
+  useEffect(() => {
     if (!providerId) {
       queueMicrotask(() => setModels([]));
       return;
@@ -119,7 +142,11 @@ export function WorkspaceShell() {
                   action: "models",
                   id: provider.id,
                 });
-                return result.models.map((model) => ({
+                return visibleModels(
+                  provider.id,
+                  result.models,
+                  data.settings.enabledModels,
+                ).map((model) => ({
                   ...model,
                   connectionId: provider.id,
                 }));
@@ -136,7 +163,11 @@ export function WorkspaceShell() {
             action: "models",
             id: providerId,
           }).then((result) =>
-            result.models.map((model) => ({
+            visibleModels(
+              providerId,
+              result.models,
+              data.settings.enabledModels,
+            ).map((model) => ({
               ...model,
               connectionId: providerId,
             })),
@@ -152,7 +183,7 @@ export function WorkspaceShell() {
       })
       .catch((e) => toast.error(e.message))
       .finally(() => setModelsLoading(false));
-  }, [providerId, projectMode, data.providers]);
+  }, [providerId, projectMode, data.providers, data.settings.enabledModels]);
   const refresh = async () => {
     if (activeId) {
       const current = data.conversations.find((c) => c.id === activeId);
@@ -271,6 +302,18 @@ export function WorkspaceShell() {
       conversationId = created.id;
       setActiveId(conversationId);
     }
+    let requestProjectId = activeProject;
+    if (!requestProjectId && isCodingWorkspaceRequest(text)) {
+      const converted = await action<{ id: string }>({
+        action: "convert_conversation_to_project",
+        conversationId,
+        name: projectNameFromPrompt(text),
+      });
+      requestProjectId = converted.id;
+      setActiveProject(requestProjectId);
+      setIde(true);
+      toast.success("Coding request opened in a project workspace");
+    }
     const tempUser: Message = {
       id: crypto.randomUUID(),
       role: "user",
@@ -299,7 +342,7 @@ export function WorkspaceShell() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           conversationId,
-          projectId: activeProject,
+          projectId: requestProjectId,
           providerId: actualProvider,
           modelId,
           message: text,
@@ -339,8 +382,14 @@ export function WorkspaceShell() {
             throw new Error(payload.error || "Generation failed");
         }
       }
-      const detail = await fetchData(conversationId, activeProject);
+      const detail = await fetchData(conversationId, requestProjectId);
       setData(detail);
+      if (detail.files[0]) setActiveFile(detail.files[0].path);
+      const syncedProject = detail.projects.find(
+        (project) => project.id === requestProjectId,
+      );
+      if (localDirectory && syncedProject)
+        await syncProjectToLocal(localDirectory, syncedProject, detail.files);
       const savedConversation = detail.conversations.find(
         (item) => item.id === conversationId,
       );
@@ -546,6 +595,10 @@ export function WorkspaceShell() {
                 onStop={() => abort.current?.abort()}
                 onMenu={() => setSidebar(true)}
                 onToggleIde={() => setIde(!ide)}
+                onOpenWorkspace={() => {
+                  setIde(true);
+                  setMobile("code");
+                }}
                 generating={generating}
                 projectMode={projectMode}
                 onUpload={upload}
@@ -643,6 +696,35 @@ export function WorkspaceShell() {
         onOpenChange={setSettings}
         providers={data.providers}
         settings={data.settings}
+        localFolderName={localDirectory?.name}
+        localFolderSupported={supportsLocalWorkspace()}
+        onChooseLocalFolder={async () => {
+          try {
+            const directory = await chooseLocalWorkspace();
+            setLocalDirectory(directory);
+            const project = data.projects.find(
+              (item) => item.id === activeProject,
+            );
+            if (project)
+              await syncProjectToLocal(directory, project, data.files);
+            toast.success(
+              project
+                ? `Project synced to ${directory.name}`
+                : `Local workspace set to ${directory.name}`,
+            );
+          } catch (error) {
+            if ((error as Error).name !== "AbortError")
+              toast.error(
+                error instanceof Error
+                  ? error.message
+                  : "Could not open that folder",
+              );
+          }
+        }}
+        activeProjectId={activeProject}
+        activeProjectName={
+          data.projects.find((project) => project.id === activeProject)?.name
+        }
         onChanged={() => refresh()}
       />
       <UsageDialog

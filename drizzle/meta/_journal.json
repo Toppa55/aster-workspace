@@ -15,6 +15,13 @@
       "when": 1790633325192,
       "tag": "0001_ancient_midnight",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1790650716649,
+      "tag": "0002_clear_jean_grey",
+      "breakpoints": true
     }
   ]
 }

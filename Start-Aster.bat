@@ -29,11 +29,11 @@ if not exist "node_modules" (
 node scripts/setup-local-env.mjs
 if errorlevel 1 goto :failed
 
-if not exist ".wrangler\.aster-migrated" (
-  echo Preparing the local application and database...
-  call npx --yes pnpm@11.25.0 build
-  if errorlevel 1 goto :failed
+echo Checking the application and database...
+call npx --yes pnpm@11.25.0 build
+if errorlevel 1 goto :failed
 
+if not exist ".wrangler\.aster-migrated" (
   call node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0000_thankful_blonde_phantom.sql
   if errorlevel 1 goto :failed
 
@@ -42,6 +42,13 @@ if not exist ".wrangler\.aster-migrated" (
 
   if not exist ".wrangler" mkdir ".wrangler"
   echo ready>".wrangler\.aster-migrated"
+)
+
+if not exist ".wrangler\.migration-0002" (
+  echo Adding secure external connections...
+  call node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0002_clear_jean_grey.sql
+  if errorlevel 1 goto :failed
+  echo ready>".wrangler\.migration-0002"
 )
 
 echo.

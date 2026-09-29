@@ -4,6 +4,7 @@ import {
   Code2,
   Copy,
   Edit3,
+  FolderCode,
   Menu,
   Paperclip,
   RefreshCw,
@@ -31,6 +32,7 @@ export function ChatPane({
   onStop,
   onMenu,
   onToggleIde,
+  onOpenWorkspace,
   generating,
   projectMode,
   onUpload,
@@ -51,6 +53,7 @@ export function ChatPane({
   onStop: () => void;
   onMenu: () => void;
   onToggleIde: () => void;
+  onOpenWorkspace: () => void;
   generating: boolean;
   projectMode: boolean;
   onUpload: (files: FileList) => void;
@@ -183,16 +186,38 @@ export function ChatPane({
               hasProviders={providers.length > 0}
             />
           ) : (
-            shown.map((message) => (
-              <MessageView
-                key={message.id}
-                message={message}
-                onRetry={() =>
-                  message.role === "user" &&
-                  void onSend(message.content, reasoning)
-                }
-              />
-            ))
+            <>
+              {shown.map((message) => (
+                <MessageView
+                  key={message.id}
+                  message={message}
+                  onRetry={() =>
+                    message.role === "user" &&
+                    void onSend(message.content, reasoning)
+                  }
+                />
+              ))}
+              {projectMode && (
+                <button
+                  type="button"
+                  onClick={onOpenWorkspace}
+                  className="flex w-full items-center gap-3 rounded-2xl border bg-card p-4 text-left shadow-sm transition hover:border-violet-400/60 hover:bg-accent/40"
+                >
+                  <span className="grid size-10 place-items-center rounded-xl bg-violet-500/10 text-violet-400">
+                    <FolderCode className="size-5" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-medium">
+                      Open code workspace
+                    </span>
+                    <span className="block text-xs text-muted-foreground">
+                      Browse the folder tree, source files and reviewable diffs
+                    </span>
+                  </span>
+                  <Code2 className="size-4 text-muted-foreground" />
+                </button>
+              )}
+            </>
           )}
         </div>
       </div>

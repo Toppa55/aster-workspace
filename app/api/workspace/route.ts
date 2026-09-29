@@ -171,6 +171,49 @@ export async function POST(request: Request) {
         .run();
       return Response.json({ id: newId });
     }
+    if (action === "convert_conversation_to_project") {
+      const conversationId = String(body.conversationId || "");
+      const conversation = await db
+        .prepare(
+          "SELECT id,title,project_id FROM conversations WHERE id=? AND user_id=?",
+        )
+        .bind(conversationId, user.id)
+        .first<{ id: string; title: string; project_id?: string }>();
+      if (!conversation)
+        return Response.json(
+          { error: "Conversation not found" },
+          { status: 404 },
+        );
+      if (conversation.project_id)
+        return Response.json({
+          id: conversation.project_id,
+          conversationId,
+        });
+      const projectId = id();
+      await db.batch([
+        db
+          .prepare(
+            "INSERT INTO projects (id,user_id,name,description,created_at,updated_at) VALUES (?,?,?,?,?,?)",
+          )
+          .bind(
+            projectId,
+            user.id,
+            String(body.name || conversation.title || "New project").slice(
+              0,
+              80,
+            ),
+            "Created automatically from a coding request.",
+            time,
+            time,
+          ),
+        db
+          .prepare(
+            "UPDATE conversations SET project_id=?,folder_id=NULL,mode='project',updated_at=? WHERE id=? AND user_id=?",
+          )
+          .bind(projectId, time, conversationId, user.id),
+      ]);
+      return Response.json({ id: projectId, conversationId });
+    }
     if (action === "create_folder") {
       const newId = id();
       await db
