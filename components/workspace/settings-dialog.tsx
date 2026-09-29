@@ -335,6 +335,26 @@ export function SettingsDialog({
       setGithubBusy(false);
     }
   };
+  const testGithub = async () => {
+    const connection = integrations.find((item) => item.type === "github");
+    if (!connection) return;
+    setGithubBusy(true);
+    try {
+      const result = await api<{ login: string }>("/api/integrations", {
+        method: "POST",
+        body: JSON.stringify({ action: "test", id: connection.id }),
+      });
+      toast.success(`GitHub connected as ${result.login}`);
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? `${error.message}. Replace the token to reconnect.`
+          : "GitHub connection failed. Replace the token to reconnect.",
+      );
+    } finally {
+      setGithubBusy(false);
+    }
+  };
   const publishGithub = async () => {
     const connection = integrations.find((item) => item.type === "github");
     if (!connection || !activeProjectId) return;
@@ -974,7 +994,15 @@ export function SettingsDialog({
                       <p className="text-sm text-muted-foreground">
                         Open or create a project before choosing its repository.
                       </p>
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          disabled={githubBusy}
+                          onClick={() => void testGithub()}
+                          className="rounded-lg border px-3 py-2 text-sm font-medium disabled:opacity-50"
+                        >
+                          {githubBusy ? "Testing…" : "Test connection"}
+                        </button>
                         <button
                           type="button"
                           onClick={() => setReplacingGithub(true)}
