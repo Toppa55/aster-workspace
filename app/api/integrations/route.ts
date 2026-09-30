@@ -1,6 +1,10 @@
 import { authError, requireUser } from "@/lib/server/auth";
 import { database, id, now, rows } from "@/lib/server/db";
 import { decryptSecret, encryptSecret, keyHint } from "@/lib/security/crypto";
+import {
+  loadRepositorySource,
+  type GitHubRepository,
+} from "@/lib/integrations/github-repository";
 
 export const dynamic = "force-dynamic";
 
@@ -83,6 +87,55 @@ export async function POST(request: Request) {
         "/user",
       );
       return Response.json({ ok: true, login: account.login });
+    }
+    if (action === "import_github") {
+      const integration = await githubIntegration(
+        user.id,
+        String(body.integrationId),
+      );
+      const owner = safeName(String(body.owner || integration.login));
+      const repo = safeName(String(body.repo || ""));
+      const projectId = String(body.projectId || "");
+      const project = await db
+        .prepare("SELECT id FROM projects WHERE id=? AND user_id=?")
+        .bind(projectId, user.id)
+        .first<{ id: string }>();
+      if (!project)
+        return Response.json({ error: "Project not found" }, { status: 404 });
+      const repository = await github<GitHubRepository>(
+        integration.token,
+        `/repos/${owner}/${repo}`,
+      );
+      const source = await loadRepositorySource(
+        integration,
+        repository,
+        `Import the complete source for ${repository.full_name}`,
+        { maxFiles: 300, maxBytes: 3_000_000 },
+      );
+      if (!source.files.length)
+        return Response.json(
+          { error: "No readable source files were found" },
+          { status: 400 },
+        );
+      const time = now();
+      await db.batch(
+        source.files.map((file) =>
+          db
+            .prepare(
+              "INSERT INTO project_files (id,project_id,path,content,version,created_at,updated_at) VALUES (?,?,?,?,1,?,?) ON CONFLICT(project_id,path) DO UPDATE SET content=excluded.content,version=project_files.version+1,updated_at=excluded.updated_at",
+            )
+            .bind(id(), projectId, file.path, file.content, time, time),
+        ),
+      );
+      return Response.json({
+        ok: true,
+        files: source.files.length,
+        availableTextFiles: source.availableTextFiles,
+        branch: source.branch,
+        truncated:
+          source.treeTruncated ||
+          source.files.length < source.availableTextFiles,
+      });
     }
     if (action === "publish_github") {
       const integration = await githubIntegration(
@@ -207,6 +260,10 @@ async function publishSnapshot(options: {
     ref = { object: { sha: base.object.sha } };
   }
   if (!ref) throw new Error("The repository has no branch to publish to");
+  const parentCommit = await github<{ tree: { sha: string } }>(
+    options.token,
+    `/repos/${options.owner}/${options.repo}/git/commits/${ref.object.sha}`,
+  );
   const blobs = await Promise.all(
     options.files.map(async (file) => {
       const blob = await github<{ sha: string }>(
@@ -223,7 +280,10 @@ async function publishSnapshot(options: {
   const tree = await github<{ sha: string }>(
     options.token,
     `/repos/${options.owner}/${options.repo}/git/trees`,
-    { method: "POST", body: JSON.stringify({ tree: blobs }) },
+    {
+      method: "POST",
+      body: JSON.stringify({ base_tree: parentCommit.tree.sha, tree: blobs }),
+    },
   );
   const commit = await github<{ sha: string; html_url?: string }>(
     options.token,

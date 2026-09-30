@@ -68,15 +68,16 @@ export async function POST(request: Request) {
         );
       try {
         const credential = await credentialFor(user.id, body.providerId!);
+        const githubContext = await githubContextForPrompt(
+          user.id,
+          body.message!,
+          projectId,
+        );
         const context = await buildContext(
           user.id,
           body.conversationId!,
           body.message!,
           projectId,
-        );
-        const githubContext = await githubContextForPrompt(
-          user.id,
-          body.message!,
         );
         if (githubContext) context.messages.splice(1, 0, githubContext);
         const time = now();
@@ -335,8 +336,10 @@ async function colonyCandidates(
             (model) =>
               model.capabilities.streaming &&
               !model.capabilities.imageGeneration &&
-              !(providerId === coordinatorProviderId &&
-                model.id === coordinatorModel),
+              !(
+                providerId === coordinatorProviderId &&
+                model.id === coordinatorModel
+              ),
           )
           .map<ColonyCandidate>((model) => ({
             credential,

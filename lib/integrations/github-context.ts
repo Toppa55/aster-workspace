@@ -1,33 +1,21 @@
-import { database } from "@/lib/server/db";
+import { database, id, now } from "@/lib/server/db";
 import { decryptSecret } from "@/lib/security/crypto";
 import type { ChatMessage } from "@/lib/ai/types";
 import {
   isGitHubRequest,
   repositoryFromPrompt,
 } from "@/lib/integrations/github-selection";
-
-const githubBase = "https://api.github.com";
-
-type GitHubIntegration = {
-  token: string;
-  login: string;
-};
-
-type Repository = {
-  name: string;
-  full_name: string;
-  private: boolean;
-  description: string | null;
-  default_branch: string;
-  language: string | null;
-  updated_at: string;
-  open_issues_count: number;
-  html_url: string;
-};
+import {
+  github,
+  loadRepositorySource,
+  type GitHubCredential,
+  type GitHubRepository,
+} from "@/lib/integrations/github-repository";
 
 export async function githubContextForPrompt(
   userId: string,
   prompt: string,
+  projectId?: string | null,
 ): Promise<ChatMessage | null> {
   if (!isGitHubRequest(prompt)) return null;
   const integration = await connectedGitHub(userId);
@@ -42,20 +30,26 @@ export async function githubContextForPrompt(
   try {
     const [account, repositories] = await Promise.all([
       github<{ login: string; name: string | null }>(integration, "/user"),
-      github<Repository[]>(
+      github<GitHubRepository[]>(
         integration,
         "/user/repos?per_page=100&sort=updated&affiliation=owner%2Ccollaborator%2Corganization_member",
       ),
     ]);
     const selected = repositoryFromPrompt(prompt, repositories);
     const details = selected
-      ? await repositoryDetails(integration, selected)
+      ? await repositoryDetails(
+          integration,
+          selected,
+          prompt,
+          projectId,
+          userId,
+        )
       : undefined;
     const payload = {
       account: { login: account.login, name: account.name },
       access: {
         live: true,
-        mode: "read repository data in chat; create and push repositories from project workspaces",
+        mode: "read repository source; import into project workspaces; stage edits for approval; explicitly commit and push approved files",
       },
       repositories: repositories.slice(0, 30).map((repository) => ({
         name: repository.full_name,
@@ -73,7 +67,8 @@ export async function githubContextForPrompt(
       role: "system",
       content: [
         "Astrid has a working GitHub connection. The following is live data fetched server-side for this request.",
-        "Never claim that GitHub is unavailable when this context is present. Answer from this data and be explicit about what was inspected.",
+        "Never claim that GitHub or source-file access is unavailable when this context contains sourceFiles or importedFiles. Answer from the actual source and name the files inspected.",
+        "Only the selected, bounded source files were retrieved. Do not claim to have inspected files not listed here.",
         "The GitHub token itself is never available to you. Do not request it from the user.",
         JSON.stringify(payload),
       ].join("\n"),
@@ -88,7 +83,7 @@ export async function githubContextForPrompt(
 
 async function connectedGitHub(
   userId: string,
-): Promise<GitHubIntegration | null> {
+): Promise<GitHubCredential | null> {
   const row = await database()
     .prepare(
       "SELECT encrypted_secret,config FROM integrations WHERE user_id=? AND type='github' AND enabled=1 LIMIT 1",
@@ -104,11 +99,14 @@ async function connectedGitHub(
 }
 
 async function repositoryDetails(
-  integration: GitHubIntegration,
-  repository: Repository,
+  integration: GitHubCredential,
+  repository: GitHubRepository,
+  prompt: string,
+  projectId?: string | null,
+  userId?: string,
 ) {
   const path = `/repos/${repository.full_name}`;
-  const [contents, commits, pulls, issues] = await Promise.all([
+  const [contents, commits, pulls, issues, source] = await Promise.all([
     github<
       Array<{ name: string; path: string; type: "file" | "dir"; size: number }>
     >(integration, `${path}/contents`).catch(() => []),
@@ -138,7 +136,31 @@ async function repositoryDetails(
         pull_request?: unknown;
       }>
     >(integration, `${path}/issues?state=open&per_page=20`).catch(() => []),
+    loadRepositorySource(integration, repository, prompt, {
+      maxFiles: projectId ? 180 : 16,
+      maxBytes: projectId ? 1_500_000 : 80_000,
+    }).catch(() => null),
   ]);
+  let importedFiles: string[] | undefined;
+  if (projectId && source?.files.length) {
+    const project = await database()
+      .prepare("SELECT id FROM projects WHERE id=? AND user_id=?")
+      .bind(projectId, userId)
+      .first<{ id: string }>();
+    if (project) {
+      const time = now();
+      await database().batch(
+        source.files.map((file) =>
+          database()
+            .prepare(
+              "INSERT INTO project_files (id,project_id,path,content,version,created_at,updated_at) VALUES (?,?,?,?,1,?,?) ON CONFLICT(project_id,path) DO NOTHING",
+            )
+            .bind(id(), projectId, file.path, file.content, time, time),
+        ),
+      );
+      importedFiles = source.files.map((file) => file.path);
+    }
+  }
   return {
     name: repository.full_name,
     defaultBranch: repository.default_branch,
@@ -152,22 +174,22 @@ async function repositoryDetails(
     })),
     openPullRequests: pulls,
     openIssues: issues.filter((issue) => !issue.pull_request),
+    sourceAccess: source
+      ? {
+          branch: source.branch,
+          availableTextFiles: source.availableTextFiles,
+          selectedFiles: source.files.length,
+          treeTruncated: source.treeTruncated,
+        }
+      : { error: "GitHub source tree could not be retrieved" },
+    importedFiles,
+    sourceFiles: projectId
+      ? undefined
+      : source?.files.map((file) => ({
+          path: file.path,
+          content: file.content,
+        })),
   };
-}
-
-async function github<T>(integration: GitHubIntegration, path: string) {
-  const response = await fetch(`${githubBase}${path}`, {
-    headers: {
-      accept: "application/vnd.github+json",
-      authorization: `Bearer ${integration.token}`,
-      "user-agent": "Astrid-Workspace",
-      "x-github-api-version": "2022-11-28",
-    },
-  });
-  if (!response.ok) {
-    throw new Error(`GitHub returned ${response.status}`);
-  }
-  return (await response.json()) as T;
 }
 
 function safeError(error: unknown) {

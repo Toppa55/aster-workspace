@@ -10,6 +10,15 @@ export function isGitHubRequest(prompt: string) {
   return githubIntent.test(prompt);
 }
 
+export function isGitHubWorkspaceRequest(prompt: string) {
+  return (
+    isGitHubRequest(prompt) &&
+    /\b(open|inspect|review|read|look at|clone|import|edit|change|update|fix|build|create|push|commit|source|files?|code)\b/i.test(
+      prompt,
+    )
+  );
+}
+
 export function repositoryFromPrompt<T extends GitHubRepositorySummary>(
   prompt: string,
   repositories: T[],

@@ -419,6 +419,44 @@ export function SettingsDialog({
       setGithubBusy(false);
     }
   };
+  const importGithub = async () => {
+    const connection = integrations.find((item) => item.type === "github");
+    if (!connection || !activeProjectId) return;
+    if (
+      !confirm(
+        "Import the current GitHub source into this workspace? Matching workspace files will be refreshed from GitHub.",
+      )
+    )
+      return;
+    setGithubBusy(true);
+    try {
+      const result = await api<{
+        files: number;
+        availableTextFiles: number;
+        branch: string;
+        truncated: boolean;
+      }>("/api/integrations", {
+        method: "POST",
+        body: JSON.stringify({
+          action: "import_github",
+          integrationId: connection.id,
+          projectId: activeProjectId,
+          owner: githubOwner,
+          repo: githubRepo,
+        }),
+      });
+      onChanged();
+      toast.success(
+        `Imported ${result.files} source files from ${githubRepo}/${result.branch}${result.truncated ? " (within the workspace safety limit)" : ""}`,
+      );
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "GitHub import failed",
+      );
+    } finally {
+      setGithubBusy(false);
+    }
+  };
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] overflow-hidden p-0 sm:max-h-[88dvh] sm:max-w-3xl">
@@ -659,9 +697,9 @@ export function SettingsDialog({
                       Colony
                     </h3>
                     <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                      The model selected in chat remains the coordinator. It
-                      may divide suitable work among lower-cost enabled models
-                      in parallel, then review the combined result itself.
+                      The model selected in chat remains the coordinator. It may
+                      divide suitable work among lower-cost enabled models in
+                      parallel, then review the combined result itself.
                     </p>
                   </div>
                   <label className="flex items-start gap-3 text-sm">
@@ -692,9 +730,15 @@ export function SettingsDialog({
                       }
                       className="mt-1 w-full rounded-lg border bg-background px-3 py-2"
                     >
-                      <option value="cheapest">Cheapest reliable workers</option>
-                      <option value="balanced">Balanced cost and capability</option>
-                      <option value="capable">Highest-capability workers</option>
+                      <option value="cheapest">
+                        Cheapest reliable workers
+                      </option>
+                      <option value="balanced">
+                        Balanced cost and capability
+                      </option>
+                      <option value="capable">
+                        Highest-capability workers
+                      </option>
                     </select>
                   </label>
                   <label className="block text-sm">
@@ -1071,6 +1115,15 @@ export function SettingsDialog({
                         Create a private repository if it does not exist
                       </label>
                       <button
+                        onClick={importGithub}
+                        disabled={githubBusy || !githubOwner || !githubRepo}
+                        className="rounded-lg border px-3 py-2 text-sm font-medium disabled:opacity-50 sm:col-span-2"
+                      >
+                        {githubBusy
+                          ? "Working…"
+                          : "Import / refresh from GitHub"}
+                      </button>
+                      <button
                         onClick={publishGithub}
                         disabled={
                           githubBusy ||
@@ -1083,8 +1136,10 @@ export function SettingsDialog({
                         {githubBusy ? "Publishing…" : "Push project to GitHub"}
                       </button>
                       <p className="text-xs leading-5 text-muted-foreground sm:col-span-2">
-                        Publishing replaces the repository branch snapshot with
-                        the applied files currently visible in this workspace.
+                        Import brings readable source into the Code workspace.
+                        Push creates a real commit from applied files while
+                        preserving untouched repository files. AI edits still
+                        require Apply before they can be pushed.
                       </p>
                     </div>
                   ) : (

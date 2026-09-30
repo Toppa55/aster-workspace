@@ -35,6 +35,7 @@ import {
 } from "@/lib/ai/coding-intent";
 import { visibleModels } from "@/lib/ai/model-visibility";
 import { isImageGenerationRequest } from "@/lib/ai/image-intent";
+import { isGitHubWorkspaceRequest } from "@/lib/integrations/github-selection";
 
 const empty: WorkspaceData = {
   user: { id: "" },
@@ -349,7 +350,10 @@ export function WorkspaceShell() {
       setActiveId(conversationId);
     }
     let requestProjectId = activeProject;
-    if (!requestProjectId && isCodingWorkspaceRequest(text)) {
+    if (
+      !requestProjectId &&
+      (isCodingWorkspaceRequest(text) || isGitHubWorkspaceRequest(text))
+    ) {
       const converted = await action<{ id: string }>({
         action: "convert_conversation_to_project",
         conversationId,
@@ -397,9 +401,7 @@ export function WorkspaceShell() {
             reasoning,
             colony: {
               enabled: colonyEnabled,
-              strategy: String(
-                data.settings.agentColonyStrategy || "balanced",
-              ),
+              strategy: String(data.settings.agentColonyStrategy || "balanced"),
               maxWorkers: Number(data.settings.agentColonyMaxWorkers || 2),
             },
           }),
