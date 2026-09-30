@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   isCodingWorkspaceRequest,
+  isRequestedFileMutation,
   projectNameFromPrompt,
 } from "../lib/ai/coding-intent";
 
@@ -28,5 +29,16 @@ describe("coding workspace intent", () => {
     expect(
       projectNameFromPrompt("Please build me a stock tracking app today"),
     ).toBe("build me a stock tracking app");
+  });
+
+  it("distinguishes requested edits from read-only reviews", () => {
+    expect(
+      isRequestedFileMutation(
+        "Inspect github-selection.ts and modify it to recognise browse",
+      ),
+    ).toBe(true);
+    expect(
+      isRequestedFileMutation("Inspect the source code and give me feedback"),
+    ).toBe(false);
   });
 });

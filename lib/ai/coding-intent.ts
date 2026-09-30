@@ -19,6 +19,18 @@ export function isCodingWorkspaceRequest(text: string) {
   );
 }
 
+export function isRequestedFileMutation(text: string) {
+  const value = text.trim();
+  return (
+    (CHANGE_VERBS.test(value) &&
+      (CODE_TARGETS.test(value) ||
+        /(?:^|\s)[\w./-]+\.[a-z0-9]{1,8}(?:\s|$|[,.])/i.test(value))) ||
+    /\b(create|write|update|edit|modify|rename|delete|remove)\b.{0,60}\b(files?|source|code|component|function|class|page|config|readme|\.[a-z0-9]{1,8})\b/i.test(
+      value,
+    )
+  );
+}
+
 export function projectNameFromPrompt(text: string) {
   const compact = text
     .replace(/\s+/g, " ")

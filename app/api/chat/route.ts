@@ -16,6 +16,7 @@ import { credentialFor } from "@/app/api/providers/route";
 import { requireUser } from "@/lib/server/auth";
 import { database, id, now, rows } from "@/lib/server/db";
 import { githubContextForPrompt } from "@/lib/integrations/github-context";
+import { isRequestedFileMutation } from "@/lib/ai/coding-intent";
 
 export const dynamic = "force-dynamic";
 
@@ -151,13 +152,36 @@ export async function POST(request: Request) {
           responseText += `\n\n_Agent Colony: ${colony.workers.length} parallel worker${colony.workers.length === 1 ? "" : "s"} (${workerNames}); final review by ${body.modelId}._`;
           send("delta", { text: responseText });
         } else if (projectMode) {
-          const result = await completeCoding(
+          let result = await completeCoding(
             credential,
             body.modelId!,
             context.messages,
             body.reasoning ?? "medium",
             request.signal,
           );
+          if (
+            result.operations.length === 0 &&
+            isRequestedFileMutation(body.message!)
+          ) {
+            send("status", {
+              text: "The first edit plan was empty. Asking the model to produce the requested file change…",
+            });
+            result = await completeCoding(
+              credential,
+              body.modelId!,
+              [
+                ...context.messages.slice(0, -1),
+                {
+                  role: "system",
+                  content:
+                    "The latest user request explicitly requires a file mutation. Return at least one valid create_file, update_file, delete_file, or rename_file operation. For update_file, include the complete updated file content. Do not return an empty operations array unless the requested change is genuinely impossible from the provided files.",
+                },
+                context.messages.at(-1)!,
+              ],
+              body.reasoning ?? "medium",
+              request.signal,
+            );
+          }
           usage = result.usage;
           const changes = await stageOperations(
             projectId!,
