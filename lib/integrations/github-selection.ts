@@ -13,7 +13,7 @@ export function isGitHubRequest(prompt: string) {
 export function isGitHubWorkspaceRequest(prompt: string) {
   return (
     isGitHubRequest(prompt) &&
-    /\b(open|inspect|review|read|look at|clone|import|edit|change|update|fix|build|create|push|commit|source|files?|code)\b/i.test(
+    /\b(open|browse|inspect|review|read|look at|clone|import|edit|change|update|fix|build|create|push|commit|source|files?|code)\b/i.test(
       prompt,
     )
   );
