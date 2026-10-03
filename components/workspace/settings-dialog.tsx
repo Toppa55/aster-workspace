@@ -97,6 +97,7 @@ export function SettingsDialog({
   const [githubOwner, setGithubOwner] = useState("");
   const [githubRepo, setGithubRepo] = useState("");
   const [githubBranch, setGithubBranch] = useState("main");
+  const [githubBaseBranch, setGithubBaseBranch] = useState("main");
   const [createGithubRepo, setCreateGithubRepo] = useState(true);
   const [replacingGithub, setReplacingGithub] = useState(false);
   const [githubBusy, setGithubBusy] = useState(false);
@@ -117,6 +118,9 @@ export function SettingsDialog({
   );
   const [enabledModels, setEnabledModels] = useState<ModelVisibility>(() =>
     asVisibility(settings.enabledModels),
+  );
+  const [advancedModelControls, setAdvancedModelControls] = useState(
+    settings.advancedModelControls === true,
   );
   const [instructions, setInstructions] = useState(
     String(settings.globalInstructions || ""),
@@ -265,11 +269,18 @@ export function SettingsDialog({
     }));
   };
   const saveModels = async () => {
-    await action({
-      action: "save_setting",
-      key: "enabledModels",
-      value: enabledModels,
-    });
+    await Promise.all([
+      action({
+        action: "save_setting",
+        key: "enabledModels",
+        value: enabledModels,
+      }),
+      action({
+        action: "save_setting",
+        key: "advancedModelControls",
+        value: advancedModelControls,
+      }),
+    ]);
     toast.success("Model menu updated");
     onChanged();
   };
@@ -380,12 +391,17 @@ export function SettingsDialog({
       setGithubBusy(false);
     }
   };
-  const publishGithub = async () => {
+  const publishGithub = async (openPullRequest = false) => {
     const connection = integrations.find((item) => item.type === "github");
     if (!connection || !activeProjectId) return;
     setGithubBusy(true);
     try {
-      const result = await api<{ url: string; files: number; branch: string }>(
+      const result = await api<{
+        url: string;
+        files: number;
+        branch: string;
+        pullRequest?: { number: number; html_url: string };
+      }>(
         "/api/integrations",
         {
           method: "POST",
@@ -396,6 +412,8 @@ export function SettingsDialog({
             owner: githubOwner,
             repo: githubRepo,
             branch: githubBranch,
+            baseBranch: githubBaseBranch,
+            openPullRequest,
             create: createGithubRepo,
             private: true,
             message: `Update ${activeProjectName || "project"} from Astrid`,
@@ -403,11 +421,14 @@ export function SettingsDialog({
         },
       );
       toast.success(
-        `Pushed ${result.files} files to ${githubRepo}/${result.branch}`,
+        result.pullRequest
+          ? `Pull request #${result.pullRequest.number} is ready for review`
+          : `Pushed ${result.files} files to ${githubRepo}/${result.branch}`,
         {
           action: {
-            label: "Open commit",
-            onClick: () => window.open(result.url),
+            label: result.pullRequest ? "Open PR" : "Open commit",
+            onClick: () =>
+              window.open(result.pullRequest?.html_url || result.url),
           },
         },
       );
@@ -889,6 +910,25 @@ export function SettingsDialog({
                     Tick only the models you want in the chat picker.
                   </p>
                 </div>
+                <label className="flex items-start gap-3 rounded-xl border bg-card p-3 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={advancedModelControls}
+                    onChange={(event) =>
+                      setAdvancedModelControls(event.target.checked)
+                    }
+                    className="mt-1"
+                  />
+                  <span>
+                    <span className="block font-medium">
+                      Advanced model controls
+                    </span>
+                    <span className="text-xs leading-5 text-muted-foreground">
+                      Show provider, model, reasoning and capability controls in
+                      chat. Leave this off to let Astrid route automatically.
+                    </span>
+                  </span>
+                </label>
                 <input
                   value={modelSearch}
                   onChange={(event) => setModelSearch(event.target.value)}
@@ -1095,11 +1135,21 @@ export function SettingsDialog({
                         />
                       </label>
                       <label className="text-sm sm:col-span-2">
-                        Branch
+                        Working branch
                         <input
                           value={githubBranch}
                           onChange={(event) =>
                             setGithubBranch(event.target.value)
+                          }
+                          className="mt-1 w-full rounded-lg border bg-background px-3 py-2"
+                        />
+                      </label>
+                      <label className="text-sm sm:col-span-2">
+                        Protected base branch
+                        <input
+                          value={githubBaseBranch}
+                          onChange={(event) =>
+                            setGithubBaseBranch(event.target.value)
                           }
                           className="mt-1 w-full rounded-lg border bg-background px-3 py-2"
                         />
@@ -1124,7 +1174,7 @@ export function SettingsDialog({
                           : "Import / refresh from GitHub"}
                       </button>
                       <button
-                        onClick={publishGithub}
+                        onClick={() => void publishGithub(false)}
                         disabled={
                           githubBusy ||
                           !githubOwner ||
@@ -1134,6 +1184,21 @@ export function SettingsDialog({
                         className="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50 sm:col-span-2"
                       >
                         {githubBusy ? "Publishing…" : "Push project to GitHub"}
+                      </button>
+                      <button
+                        onClick={() => void publishGithub(true)}
+                        disabled={
+                          githubBusy ||
+                          !githubOwner ||
+                          !githubRepo ||
+                          !githubBranch ||
+                          githubBranch === githubBaseBranch
+                        }
+                        className="rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-50 sm:col-span-2"
+                      >
+                        {githubBusy
+                          ? "Preparing pull request…"
+                          : "Push branch and open pull request"}
                       </button>
                       <p className="text-xs leading-5 text-muted-foreground sm:col-span-2">
                         Import brings readable source into the Code workspace.

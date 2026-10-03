@@ -15,7 +15,27 @@ export type Project = {
   memory: string;
   summary: string;
   auto_apply: number | boolean;
+  autonomy_level: string;
+  github_owner?: string;
+  github_repo?: string;
+  github_base_branch: string;
+  github_working_branch?: string;
   updated_at: number;
+};
+export type ActivityEvent = {
+  id: string;
+  project_id: string;
+  conversation_id?: string;
+  kind: string;
+  message: string;
+  status: "running" | "complete" | "failed";
+  metadata: string;
+  created_at: number;
+};
+export type Checkpoint = {
+  id: string;
+  message: string;
+  created_at: number;
 };
 export type Conversation = {
   id: string;
@@ -109,4 +129,6 @@ export type WorkspaceData = {
   messages: Message[];
   files: ProjectFile[];
   changes: Change[];
+  activity: ActivityEvent[];
+  checkpoints: Checkpoint[];
 };

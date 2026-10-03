@@ -12,10 +12,11 @@ import {
   MoreHorizontal,
   Save,
   Trash2,
+  Undo2,
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import type { Change, ProjectFile } from "./types";
+import type { Change, Checkpoint, ProjectFile } from "./types";
 import { language } from "./client";
 
 export function IdePane({
@@ -30,6 +31,8 @@ export function IdePane({
   onResolve,
   onResolveAll,
   onCommit,
+  checkpoint,
+  onRestore,
   onClose,
 }: {
   files: ProjectFile[];
@@ -43,6 +46,8 @@ export function IdePane({
   onResolve: (id: string, status: "applied" | "rejected") => void;
   onResolveAll: (status: "applied" | "rejected") => void;
   onCommit: () => void;
+  checkpoint?: Checkpoint;
+  onRestore: () => void;
   onClose: () => void;
 }) {
   const [tab, setTab] = useState<"files" | "changes">("files");
@@ -307,6 +312,16 @@ export function IdePane({
               <GitCommit className="size-3" />
               Commit
             </button>
+            {checkpoint && (
+              <button
+                onClick={onRestore}
+                title={`Restore ${checkpoint.message}`}
+                className="ml-1 flex items-center gap-1 rounded px-1.5 hover:bg-white/15"
+              >
+                <Undo2 className="size-3" />
+                Restore
+              </button>
+            )}
             <span className="ml-auto">
               {selected ? language(selected.path) : "Astrid project"}
             </span>

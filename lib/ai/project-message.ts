@@ -1,5 +1,16 @@
 import type { CodingOperation } from "./types";
 
+export function projectReadOnlyMessage(
+  userMessage: string,
+  explanation: string,
+) {
+  const message = stripCodeBlocks(userMessage.trim() || explanation.trim());
+  return (
+    message ||
+    "I inspected the available project context, but there was no written summary to show. No files were changed."
+  );
+}
+
 /**
  * Project chat is generated from operation metadata, not provider prose. This
  * prevents source returned by a model from leaking into the chat surface.
@@ -43,4 +54,11 @@ export function projectWorkspaceMessage(
 
 function countLabel(count: number, verb: string) {
   return count ? `${verb} ${count}` : "";
+}
+
+function stripCodeBlocks(value: string) {
+  return value
+    .replace(/```[\s\S]*?```/g, "[Source code is available in the Code workspace.]")
+    .slice(0, 6000)
+    .trim();
 }

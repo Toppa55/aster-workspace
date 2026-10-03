@@ -50,6 +50,8 @@ const empty: WorkspaceData = {
   messages: [],
   files: [],
   changes: [],
+  activity: [],
+  checkpoints: [],
 };
 
 export function WorkspaceShell() {
@@ -117,12 +119,12 @@ export function WorkspaceShell() {
     setColonyEnabled(Boolean(next.settings.agentColonyDefault));
     setLoading(false);
     if (next.providers.length === 0) setSettings(true);
-    setProviderId((current) =>
-      current &&
-      (current === "smart" || next.providers.some((p) => p.id === current))
-        ? current
-        : next.providers.find((p) => p.enabled)?.id,
-    );
+    setProviderId((current) => {
+      if (next.settings.advancedModelControls === true && current)
+        return current;
+      const enabled = next.providers.filter((provider) => provider.enabled);
+      return enabled.length > 1 ? "smart" : enabled[0]?.id;
+    });
     if (next.conversations[0]) selectConversation(next.conversations[0]);
   }, [fetchData, selectConversation]);
   useEffect(() => {
@@ -397,6 +399,7 @@ export function WorkspaceShell() {
             projectId: requestProjectId,
             providerId: actualProvider,
             modelId: requestModelId,
+            activeFile,
             ...(imageGeneration ? { prompt: text } : { message: text }),
             reasoning,
             colony: {
@@ -553,6 +556,24 @@ export function WorkspaceShell() {
     });
     toast.success(`Committed ${result.files} files`);
   };
+  const restoreCheckpoint = async () => {
+    const checkpoint = data.checkpoints[0];
+    if (!checkpoint || !activeProject) return;
+    if (
+      !confirm(
+        `Restore “${checkpoint.message}”? Current workspace files will be replaced by that known-good snapshot.`,
+      )
+    )
+      return;
+    const result = await action<{ files: number }>({
+      action: "restore_checkpoint",
+      projectId: activeProject,
+      conversationId: activeId,
+      checkpointId: checkpoint.id,
+    });
+    toast.success(`Restored ${result.files} files`);
+    await refresh();
+  };
   const upload = async (files: FileList) => {
     const form = new FormData();
     Array.from(files).forEach((f) => form.append("files", f));
@@ -652,6 +673,20 @@ export function WorkspaceShell() {
           value: enabled,
         });
       }}
+      activity={data.activity}
+      autonomyLevel={
+        data.projects.find((project) => project.id === activeProject)
+          ?.autonomy_level || "suggest"
+      }
+      onAutonomyLevel={(level) => {
+        if (!activeProject) return;
+        void action({
+          action: "update_project",
+          id: activeProject,
+          autonomy_level: level,
+        }).then(refresh);
+      }}
+      advancedModelControls={data.settings.advancedModelControls === true}
     />
   );
   if (loading)
@@ -749,6 +784,8 @@ export function WorkspaceShell() {
                       onResolve={resolve}
                       onResolveAll={resolveAll}
                       onCommit={commit}
+                      checkpoint={data.checkpoints[0]}
+                      onRestore={restoreCheckpoint}
                       onClose={() => {
                         setIde(false);
                         setMobile("chat");
@@ -759,46 +796,52 @@ export function WorkspaceShell() {
               )}
             </ResizablePanelGroup>
           </div>
-        ) : mobile === "code" && projectMode ? (
-          <div className="min-w-0 flex-1">
-            <IdePane
-              files={data.files}
-              changes={data.changes}
-              activeFile={activeFile}
-              setActiveFile={setActiveFile}
-              onSave={saveFile}
-              onCreate={createFile}
-              onDelete={deleteFile}
-              onRename={renameFile}
-              onResolve={resolve}
-              onResolveAll={resolveAll}
-              onCommit={commit}
-              onClose={() => setMobile("chat")}
-            />
-          </div>
         ) : (
-          <div className="min-w-0 flex-1">{chatView}</div>
+          <div className="flex min-w-0 flex-1 flex-col">
+            <div className="min-h-0 flex-1">
+              {mobile === "code" && projectMode ? (
+                <IdePane
+                  files={data.files}
+                  changes={data.changes}
+                  activeFile={activeFile}
+                  setActiveFile={setActiveFile}
+                  onSave={saveFile}
+                  onCreate={createFile}
+                  onDelete={deleteFile}
+                  onRename={renameFile}
+                  onResolve={resolve}
+                  onResolveAll={resolveAll}
+                  onCommit={commit}
+                  checkpoint={data.checkpoints[0]}
+                  onRestore={restoreCheckpoint}
+                  onClose={() => setMobile("chat")}
+                />
+              ) : (
+                chatView
+              )}
+            </div>
+            {projectMode && (
+              <div className="grid shrink-0 grid-cols-2 border-t bg-card p-1 pb-[max(4px,env(safe-area-inset-bottom))] lg:hidden">
+                <button
+                  onClick={() => setMobile("chat")}
+                  className={`rounded-lg px-4 py-2 text-sm ${mobile === "chat" ? "bg-accent font-medium" : "text-muted-foreground"}`}
+                >
+                  Chat
+                </button>
+                <button
+                  onClick={() => {
+                    setIde(true);
+                    setMobile("code");
+                  }}
+                  className={`rounded-lg px-4 py-2 text-sm ${mobile === "code" ? "bg-accent font-medium" : "text-muted-foreground"}`}
+                >
+                  Code {data.changes.length ? `(${data.changes.length})` : ""}
+                </button>
+              </div>
+            )}
+          </div>
         )}
       </div>
-      {projectMode && (
-        <div className="fixed bottom-[max(8px,env(safe-area-inset-bottom))] left-1/2 z-40 flex -translate-x-1/2 gap-1 rounded-xl border bg-card p-1 shadow-xl lg:hidden">
-          <button
-            onClick={() => setMobile("chat")}
-            className={`rounded-lg px-4 py-2 text-sm ${mobile === "chat" ? "bg-accent" : "text-muted-foreground"}`}
-          >
-            Chat
-          </button>
-          <button
-            onClick={() => {
-              setIde(true);
-              setMobile("code");
-            }}
-            className={`rounded-lg px-4 py-2 text-sm ${mobile === "code" ? "bg-accent" : "text-muted-foreground"}`}
-          >
-            Code {data.changes.length ? `(${data.changes.length})` : ""}
-          </button>
-        </div>
-      )}
       <div className="fixed right-3 top-16 z-30 flex flex-col gap-2">
         <button
           onClick={exportConversation}

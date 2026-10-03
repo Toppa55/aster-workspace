@@ -2,6 +2,7 @@ import { authError, requireUser } from "@/lib/server/auth";
 import { database, ensureUser, id, now, rows } from "@/lib/server/db";
 import { estimateCost, inferCapabilities } from "@/lib/ai/catalog";
 import type { ProviderType } from "@/lib/ai/types";
+import { safeAutonomyLevel } from "@/lib/projects/autonomy";
 
 export const dynamic = "force-dynamic";
 
@@ -106,6 +107,24 @@ export async function GET(request: Request) {
             .bind(projectId, user.id),
         )
       : [];
+    const activity = projectId
+      ? await rows(
+          db
+            .prepare(
+              "SELECT * FROM activity_events WHERE project_id=? ORDER BY created_at DESC LIMIT 100",
+            )
+            .bind(projectId),
+        )
+      : [];
+    const checkpoints = projectId
+      ? await rows(
+          db
+            .prepare(
+              "SELECT id,message,created_at FROM git_commits WHERE project_id=? AND is_checkpoint=1 ORDER BY created_at DESC LIMIT 20",
+            )
+            .bind(projectId),
+        )
+      : [];
     return Response.json({
       user,
       folders,
@@ -119,6 +138,8 @@ export async function GET(request: Request) {
       messages,
       files,
       changes,
+      activity,
+      checkpoints,
     });
   } catch (error) {
     return authError(error) ?? fail(error);
@@ -344,6 +365,11 @@ export async function POST(request: Request) {
         "summary",
         "auto_apply",
         "folder_id",
+        "autonomy_level",
+        "github_owner",
+        "github_repo",
+        "github_base_branch",
+        "github_working_branch",
       ] as const;
       const fields = allowed.filter((k) => Object.hasOwn(body, k));
       if (!fields.length) return Response.json({ ok: true });
@@ -352,7 +378,11 @@ export async function POST(request: Request) {
           `UPDATE projects SET ${fields.map((k) => `${k}=?`).join(",")},updated_at=? WHERE id=? AND user_id=?`,
         )
         .bind(
-          ...fields.map((k) => body[k] ?? null),
+          ...fields.map((k) =>
+            k === "autonomy_level"
+              ? safeAutonomyLevel(body[k])
+              : body[k] ?? null,
+          ),
           time,
           String(body.id),
           user.id,
@@ -584,10 +614,100 @@ export async function POST(request: Request) {
         files: files.length,
       });
     }
+    if (action === "create_checkpoint") {
+      const pid = String(body.projectId);
+      const project = await db
+        .prepare("SELECT id FROM projects WHERE id=? AND user_id=?")
+        .bind(pid, user.id)
+        .first();
+      if (!project)
+        return Response.json({ error: "Project not found" }, { status: 404 });
+      const files = await rows<{ path: string; content: string }>(
+        db
+          .prepare(
+            "SELECT path,content FROM project_files WHERE project_id=? ORDER BY path",
+          )
+          .bind(pid),
+      );
+      const checkpointId = id();
+      const message = String(body.message || "Astrid checkpoint").slice(0, 160);
+      await db.batch([
+        db
+          .prepare(
+            "INSERT INTO git_commits (id,project_id,parent_id,branch,message,snapshot,is_checkpoint,created_at) VALUES (?,?,NULL,'astrid/checkpoints',?,?,1,?)",
+          )
+          .bind(
+            checkpointId,
+            pid,
+            message,
+            JSON.stringify(
+              Object.fromEntries(files.map((file) => [file.path, file.content])),
+            ),
+            time,
+          ),
+        activityStatement(
+          pid,
+          body.conversationId ? String(body.conversationId) : null,
+          "checkpoint",
+          `Created checkpoint: ${message}`,
+          "complete",
+          time,
+        ),
+      ]);
+      return Response.json({ id: checkpointId, files: files.length });
+    }
+    if (action === "restore_checkpoint") {
+      const pid = String(body.projectId);
+      const checkpoint = await db
+        .prepare(
+          "SELECT gc.id,gc.snapshot FROM git_commits gc JOIN projects p ON p.id=gc.project_id WHERE gc.id=? AND gc.project_id=? AND gc.is_checkpoint=1 AND p.user_id=?",
+        )
+        .bind(String(body.checkpointId), pid, user.id)
+        .first<{ id: string; snapshot: string }>();
+      if (!checkpoint)
+        return Response.json({ error: "Checkpoint not found" }, { status: 404 });
+      const snapshot = json(checkpoint.snapshot) as Record<string, string>;
+      const restoreTime = now();
+      const statements = [
+        db.prepare("DELETE FROM project_files WHERE project_id=?").bind(pid),
+        ...Object.entries(snapshot).map(([path, content]) =>
+          db
+            .prepare(
+              "INSERT INTO project_files (id,project_id,path,content,version,created_at,updated_at) VALUES (?,?,?,?,1,?,?)",
+            )
+            .bind(id(), pid, safePath(path), content, restoreTime, restoreTime),
+        ),
+        activityStatement(
+          pid,
+          body.conversationId ? String(body.conversationId) : null,
+          "restore",
+          `Restored checkpoint ${checkpoint.id.slice(0, 8)}`,
+          "complete",
+          restoreTime,
+        ),
+      ];
+      await db.batch(statements);
+      return Response.json({ ok: true, files: Object.keys(snapshot).length });
+    }
     return Response.json({ error: "Unknown action" }, { status: 400 });
   } catch (error) {
     return authError(error) ?? fail(error);
   }
+}
+
+function activityStatement(
+  projectId: string,
+  conversationId: string | null,
+  kind: string,
+  message: string,
+  status: string,
+  createdAt: number,
+) {
+  return database()
+    .prepare(
+      "INSERT INTO activity_events (id,project_id,conversation_id,kind,message,status,created_at) VALUES (?,?,?,?,?,?,?)",
+    )
+    .bind(id(), projectId, conversationId, kind, message, status, createdAt);
 }
 
 async function applyChange(change: Record<string, unknown>, time: number) {

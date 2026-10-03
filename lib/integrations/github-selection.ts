@@ -11,6 +11,18 @@ export function isGitHubRequest(prompt: string) {
 }
 
 export function isGitHubWorkspaceRequest(prompt: string) {
+  // Account-level requests such as “open my repositories” are lookups, not
+  // coding tasks. Keep them in chat instead of creating an empty workspace.
+  const genericAccountLookup =
+    /\b(accounts?|profiles?)\b/i.test(prompt) ||
+    /\b(my|all)\s+(github\s+)?repositor(?:y|ies)|\brepositories\b/i.test(
+      prompt,
+    );
+  const sourceSpecific =
+    /\b(source|files?|code|codebase|clone|import|edit|change|update|fix|build|create|push|commit)\b/i.test(
+      prompt,
+    );
+  if (genericAccountLookup && !sourceSpecific) return false;
   return (
     isGitHubRequest(prompt) &&
     /\b(open|browse|inspect|review|read|look at|clone|import|edit|change|update|fix|build|create|push|commit|source|files?|code)\b/i.test(

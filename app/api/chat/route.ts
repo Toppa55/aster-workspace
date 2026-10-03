@@ -10,7 +10,10 @@ import {
 import { buildContext } from "@/lib/ai/context";
 import { ensureUsage, inferCapabilities, estimateCost } from "@/lib/ai/catalog";
 import { visibleModels } from "@/lib/ai/model-visibility";
-import { projectWorkspaceMessage } from "@/lib/ai/project-message";
+import {
+  projectReadOnlyMessage,
+  projectWorkspaceMessage,
+} from "@/lib/ai/project-message";
 import type { CodingOperation, Usage } from "@/lib/ai/types";
 import { credentialFor } from "@/app/api/providers/route";
 import { requireUser } from "@/lib/server/auth";
@@ -32,6 +35,7 @@ export async function POST(request: Request) {
     projectId?: string;
     providerId?: string;
     modelId?: string;
+    activeFile?: string;
     message?: string;
     reasoning?: "off" | "low" | "medium" | "high";
     colony?: {
@@ -73,6 +77,7 @@ export async function POST(request: Request) {
           user.id,
           body.message!,
           projectId,
+          body.activeFile,
         );
         const context = await buildContext(
           user.id,
@@ -96,6 +101,23 @@ export async function POST(request: Request) {
             time,
           )
           .run();
+        if (projectId) {
+          await logActivity(
+            projectId,
+            body.conversationId!,
+            "task",
+            `Started: ${body.message!.trim().slice(0, 140)}`,
+            "running",
+          );
+          if (isRequestedFileMutation(body.message!)) {
+            send("status", { text: "Creating a safe restore point…" });
+            await createCheckpoint(
+              projectId,
+              body.conversationId!,
+              `Before: ${body.message!.trim().slice(0, 110)}`,
+            );
+          }
+        }
         let responseText = "";
         let usage: Usage = { inputTokens: 0, outputTokens: 0, cachedTokens: 0 };
         let colonyCalls: ColonyCall[] | undefined;
@@ -143,6 +165,13 @@ export async function POST(request: Request) {
               changes,
             );
             send("changes", { count: changes });
+            await logActivity(
+              projectId!,
+              body.conversationId!,
+              "changes",
+              `Prepared ${changes} reviewable workspace change${changes === 1 ? "" : "s"}`,
+              "complete",
+            );
           } else {
             responseText = colony.text ?? "";
           }
@@ -190,9 +219,21 @@ export async function POST(request: Request) {
             result.operations,
             time,
           );
-          responseText = projectWorkspaceMessage(result.operations, changes);
+          responseText =
+            changes === 0 && !isRequestedFileMutation(body.message!)
+              ? projectReadOnlyMessage(result.userMessage, result.explanation)
+              : projectWorkspaceMessage(result.operations, changes);
           send("delta", { text: responseText });
           send("changes", { count: changes });
+          await logActivity(
+            projectId!,
+            body.conversationId!,
+            changes ? "changes" : "inspection",
+            changes
+              ? `Prepared ${changes} reviewable workspace change${changes === 1 ? "" : "s"}`
+              : "Completed a read-only project inspection",
+            "complete",
+          );
         } else {
           for await (const event of streamChat(
             credential,
@@ -298,6 +339,14 @@ export async function POST(request: Request) {
           model: body.modelId,
           usage: { ...usage, costUsd: cost },
         });
+        if (projectId)
+          await logActivity(
+            projectId,
+            body.conversationId!,
+            "task",
+            "Astrid finished the task",
+            "complete",
+          );
         controller.close();
       } catch (error) {
         console.error(
@@ -307,6 +356,14 @@ export async function POST(request: Request) {
         send("error", {
           error: error instanceof Error ? error.message : "Generation failed",
         });
+        if (projectId)
+          await logActivity(
+            projectId,
+            body.conversationId!,
+            "error",
+            error instanceof Error ? error.message.slice(0, 300) : "Generation failed",
+            "failed",
+          ).catch(() => undefined);
         controller.close();
       }
     },
@@ -318,6 +375,54 @@ export async function POST(request: Request) {
       "x-accel-buffering": "no",
     },
   });
+}
+
+async function createCheckpoint(
+  projectId: string,
+  conversationId: string,
+  message: string,
+) {
+  const files = await rows<{ path: string; content: string }>(
+    database()
+      .prepare(
+        "SELECT path,content FROM project_files WHERE project_id=? ORDER BY path",
+      )
+      .bind(projectId),
+  );
+  const createdAt = now();
+  await database().batch([
+    database()
+      .prepare(
+        "INSERT INTO git_commits (id,project_id,parent_id,branch,message,snapshot,is_checkpoint,created_at) VALUES (?,?,NULL,'astrid/checkpoints',?,?,1,?)",
+      )
+      .bind(
+        id(),
+        projectId,
+        message,
+        JSON.stringify(Object.fromEntries(files.map((file) => [file.path, file.content]))),
+        createdAt,
+      ),
+    database()
+      .prepare(
+        "INSERT INTO activity_events (id,project_id,conversation_id,kind,message,status,created_at) VALUES (?,?,?,?,?,'complete',?)",
+      )
+      .bind(id(), projectId, conversationId, "checkpoint", "Created a safe restore point", createdAt),
+  ]);
+}
+
+async function logActivity(
+  projectId: string,
+  conversationId: string,
+  kind: string,
+  message: string,
+  status: "running" | "complete" | "failed",
+) {
+  await database()
+    .prepare(
+      "INSERT INTO activity_events (id,project_id,conversation_id,kind,message,status,created_at) VALUES (?,?,?,?,?,?,?)",
+    )
+    .bind(id(), projectId, conversationId, kind, message, status, now())
+    .run();
 }
 
 async function colonyCandidates(
