@@ -8,16 +8,17 @@ export async function buildContext(
   conversationId: string,
   prompt: string,
   projectId?: string | null,
+  activeFile?: string | null,
 ): Promise<{ messages: ChatMessage[]; files: FileRow[]; system: string }> {
   const db = database();
   const conversation = await db
     .prepare(
-      "SELECT c.*,p.instructions project_instructions,p.memory project_memory,p.summary project_summary,p.architecture FROM conversations c LEFT JOIN projects p ON p.id=c.project_id WHERE c.id=? AND c.user_id=?",
+      "SELECT c.*,p.instructions project_instructions,p.memory project_memory,p.summary project_summary,p.architecture,p.github_owner,p.github_repo,p.github_base_branch,p.github_working_branch,p.autonomy_level FROM conversations c LEFT JOIN projects p ON p.id=c.project_id WHERE c.id=? AND c.user_id=?",
     )
     .bind(conversationId, userId)
     .first<Record<string, unknown>>();
   if (!conversation) throw new Error("Conversation not found.");
-  const [history, memories] = await Promise.all([
+  const [history, memories, pendingChanges] = await Promise.all([
     rows<{ role: string; content: string }>(
       db
         .prepare(
@@ -32,8 +33,19 @@ export async function buildContext(
         )
         .bind(userId, projectId ?? null, conversationId),
     ),
+    projectId
+      ? rows<{ operation: string; path: string; new_path?: string }>(
+          db
+            .prepare(
+              "SELECT operation,path,new_path FROM proposed_changes WHERE project_id=? AND status='pending' ORDER BY created_at DESC LIMIT 20",
+            )
+            .bind(projectId),
+        )
+      : Promise.resolve([]),
   ]);
-  const files = projectId ? await selectRelevantFiles(projectId, prompt) : [];
+  const files = projectId
+    ? await selectRelevantFiles(projectId, prompt, activeFile)
+    : [];
   const instructions = [
     "You are Astrid, a concise and capable personal AI assistant.",
     String(conversation.instructions || ""),
@@ -43,6 +55,16 @@ export async function buildContext(
       : "",
     projectId
       ? "This is a coding project. Keep the chat response concise and conversational. Never include raw source code or fenced code blocks in user_message or explanation. Source changes must be returned only through the apply_workspace_changes tool. Return an empty operations array only when the user asks exclusively for inspection, review, explanation, or feedback with no requested modification. When a request combines inspection with a concrete change, inspect first and then return the requested file operations. For CAD requests, prefer editable parametric source such as CadQuery or OpenSCAD. Shapr3D can import STEP; do not claim that a proprietary native .shapr file was generated unless a real converter produced it."
+      : "",
+    projectId
+      ? `Active project state: repository=${String(conversation.github_owner || "unlinked")}/${String(conversation.github_repo || "unlinked")}; base branch=${String(conversation.github_base_branch || "main")}; working branch=${String(conversation.github_working_branch || "not created")}; authority=${String(conversation.autonomy_level || "suggest")}; selected file=${activeFile || "none"}.`
+      : "",
+    pendingChanges.length
+      ? `Pending reviewable changes:\n${pendingChanges
+          .map((change) =>
+            `${change.operation}: ${change.path}${change.new_path ? ` -> ${change.new_path}` : ""}`,
+          )
+          .join("\n")}`
       : "",
     conversation.project_summary
       ? `Project summary: ${conversation.project_summary}`
@@ -71,7 +93,11 @@ export async function buildContext(
   };
 }
 
-async function selectRelevantFiles(projectId: string, prompt: string) {
+async function selectRelevantFiles(
+  projectId: string,
+  prompt: string,
+  activeFile?: string | null,
+) {
   const all = await rows<FileRow>(
     database()
       .prepare(
@@ -89,6 +115,7 @@ async function selectRelevantFiles(projectId: string, prompt: string) {
     .map((file) => {
       const hay = `${file.path} ${file.content.slice(0, 4000)}`.toLowerCase();
       let score = file.content.length < 5000 ? 1 : 0;
+      if (activeFile && file.path === activeFile) score += 100;
       for (const term of terms)
         if (hay.includes(term)) score += term.includes(".") ? 5 : 2;
       if (

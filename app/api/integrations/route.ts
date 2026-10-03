@@ -5,6 +5,7 @@ import {
   loadRepositorySource,
   type GitHubRepository,
 } from "@/lib/integrations/github-repository";
+import { permits } from "@/lib/projects/autonomy";
 
 export const dynamic = "force-dynamic";
 
@@ -142,16 +143,53 @@ export async function POST(request: Request) {
         user.id,
         String(body.integrationId),
       );
-      const owner = safeName(String(body.owner || integration.login));
-      const repo = safeName(String(body.repo || ""));
-      const branch = safeBranch(String(body.branch || "main"));
       const projectId = String(body.projectId || "");
       const project = await db
-        .prepare("SELECT id,name FROM projects WHERE id=? AND user_id=?")
+        .prepare(
+          "SELECT id,name,autonomy_level,github_owner,github_repo,github_base_branch,github_working_branch FROM projects WHERE id=? AND user_id=?",
+        )
         .bind(projectId, user.id)
-        .first<{ id: string; name: string }>();
+        .first<{
+          id: string;
+          name: string;
+          autonomy_level: string;
+          github_owner?: string;
+          github_repo?: string;
+          github_base_branch: string;
+          github_working_branch?: string;
+        }>();
       if (!project)
         return Response.json({ error: "Project not found" }, { status: 404 });
+      if (!permits(project.autonomy_level, "push"))
+        return Response.json(
+          { error: "This project does not permit GitHub pushes. Raise its autonomy level to Push or PR first." },
+          { status: 403 },
+        );
+      const owner = safeName(
+        String(body.owner || project.github_owner || integration.login),
+      );
+      const repo = safeName(String(body.repo || project.github_repo || ""));
+      const baseBranch = safeBranch(
+        String(body.baseBranch || project.github_base_branch || "main"),
+      );
+      const branch = safeBranch(
+        String(
+          body.branch ||
+            project.github_working_branch ||
+            `astrid/${Date.now().toString(36)}`,
+        ),
+      );
+      const openPullRequest = body.openPullRequest === true;
+      if (openPullRequest && !permits(project.autonomy_level, "pr"))
+        return Response.json(
+          { error: "This project does not permit pull requests. Raise its autonomy level to PR first." },
+          { status: 403 },
+        );
+      if (openPullRequest && branch === baseBranch)
+        return Response.json(
+          { error: "Choose a working branch different from the protected base branch before opening a pull request." },
+          { status: 400 },
+        );
       const files = await rows<{ path: string; content: string }>(
         db
           .prepare(
@@ -175,12 +213,63 @@ export async function POST(request: Request) {
         create: body.create === true,
         privateRepo: body.private !== false,
       });
-      return Response.json(result);
+      await db
+        .prepare(
+          "UPDATE projects SET github_owner=?,github_repo=?,github_base_branch=?,github_working_branch=?,updated_at=? WHERE id=? AND user_id=?",
+        )
+        .bind(owner, repo, baseBranch, branch, now(), projectId, user.id)
+        .run();
+      let pullRequest:
+        | { number: number; html_url: string; state: string }
+        | undefined;
+      if (openPullRequest) {
+        pullRequest = await ensurePullRequest({
+          token: integration.token,
+          owner,
+          repo,
+          head: branch,
+          base: baseBranch,
+          title: String(body.title || body.message || `Astrid: ${project.name}`).slice(0, 180),
+          body: "Prepared by Astrid. Review the diff and checks before merging.",
+        });
+      }
+      return Response.json({ ...result, pullRequest });
     }
     return Response.json({ error: "Unknown action" }, { status: 400 });
   } catch (error) {
     return authError(error) ?? fail(error);
   }
+}
+
+async function ensurePullRequest(options: {
+  token: string;
+  owner: string;
+  repo: string;
+  head: string;
+  base: string;
+  title: string;
+  body: string;
+}) {
+  const existing = await github<
+    Array<{ number: number; html_url: string; state: string }>
+  >(
+    options.token,
+    `/repos/${options.owner}/${options.repo}/pulls?state=open&head=${encodeURIComponent(`${options.owner}:${options.head}`)}&base=${encodeURIComponent(options.base)}`,
+  );
+  if (existing[0]) return existing[0];
+  return github<{ number: number; html_url: string; state: string }>(
+    options.token,
+    `/repos/${options.owner}/${options.repo}/pulls`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        title: options.title,
+        head: options.head,
+        base: options.base,
+        body: options.body,
+      }),
+    },
+  );
 }
 
 async function githubIntegration(userId: string, integrationId: string) {

@@ -14,11 +14,19 @@ import {
   Send,
   Square,
   Star,
+  Activity,
+  ChevronDown,
 } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import type { Conversation, Message, Model, Provider } from "./types";
+import type {
+  ActivityEvent,
+  Conversation,
+  Message,
+  Model,
+  Provider,
+} from "./types";
 import { VoiceInput } from "./voice-input";
 
 export function ChatPane({
@@ -41,6 +49,10 @@ export function ChatPane({
   onUpload,
   colonyEnabled,
   onColonyChange,
+  activity,
+  autonomyLevel,
+  onAutonomyLevel,
+  advancedModelControls,
 }: {
   conversation?: Conversation;
   messages: Message[];
@@ -64,6 +76,10 @@ export function ChatPane({
   onUpload: (files: FileList) => void;
   colonyEnabled: boolean;
   onColonyChange: (enabled: boolean) => void;
+  activity: ActivityEvent[];
+  autonomyLevel: string;
+  onAutonomyLevel: (level: string) => void;
+  advancedModelControls: boolean;
 }) {
   const [draft, setDraft] = useState("");
   const [search, setSearch] = useState("");
@@ -71,6 +87,9 @@ export function ChatPane({
     projectMode ? "medium" : "off",
   );
   const fileRef = useRef<HTMLInputElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const followOutput = useRef(true);
+  const [activityOpen, setActivityOpen] = useState(false);
   const selected = models.find((m) => m.id === selectedModel);
   const shown = useMemo(
     () =>
@@ -88,6 +107,13 @@ export function ChatPane({
     const sent = await onSend(message, reasoning);
     if (!sent) setDraft((current) => current || message);
   };
+  useEffect(() => {
+    if (!followOutput.current) return;
+    scrollRef.current?.scrollTo({
+      top: scrollRef.current.scrollHeight,
+      behavior: generating ? "smooth" : "auto",
+    });
+  }, [messages, generating]);
   return (
     <section className="relative flex h-full min-w-0 flex-col">
       <header className="flex h-14 shrink-0 items-center gap-2 border-b px-3">
@@ -115,7 +141,7 @@ export function ChatPane({
               className="w-16 bg-transparent py-1.5 text-xs outline-none focus:w-28"
             />
           </label>
-          <select
+          {advancedModelControls ? <select
             aria-label="Provider"
             value={selectedProvider || ""}
             onChange={(e) => onProvider(e.target.value)}
@@ -132,8 +158,8 @@ export function ChatPane({
                   {p.name}
                 </option>
               ))}
-          </select>
-          <select
+          </select> : null}
+          {advancedModelControls ? <select
             aria-label="Model"
             value={selectedModel || ""}
             onChange={(e) => onModel(e.target.value)}
@@ -146,7 +172,23 @@ export function ChatPane({
                 {m.name}
               </option>
             ))}
-          </select>
+          </select> : (
+            <span className="hidden rounded-lg border bg-card px-2.5 py-1.5 text-xs text-muted-foreground sm:block">
+              Astrid · automatic routing
+            </span>
+          )}
+          {projectMode && (
+            <button
+              type="button"
+              onClick={() => setActivityOpen((value) => !value)}
+              className="flex items-center gap-1 rounded-lg border bg-card px-2 py-1.5 text-xs"
+              aria-expanded={activityOpen}
+            >
+              <Activity className="size-3.5 text-violet-400" />
+              Activity
+              <ChevronDown className="size-3" />
+            </button>
+          )}
           {projectMode && (
             <button
               onClick={onToggleIde}
@@ -157,7 +199,61 @@ export function ChatPane({
           )}
         </div>
       </header>
-      {selected && (
+      {activityOpen && projectMode && (
+        <div className="absolute right-3 top-14 z-30 w-[min(92vw,390px)] rounded-xl border bg-card p-3 shadow-2xl">
+          <div className="flex items-center gap-2 border-b pb-3">
+            <div>
+              <div className="text-sm font-medium">Astrid activity</div>
+              <div className="text-xs text-muted-foreground">
+                Checkpoints, inspections, edits and failures
+              </div>
+            </div>
+            <select
+              value={autonomyLevel}
+              onChange={(event) => onAutonomyLevel(event.target.value)}
+              className="ml-auto rounded-lg border bg-background px-2 py-1.5 text-xs"
+              aria-label="Project autonomy"
+            >
+              {[
+                "observe",
+                "suggest",
+                "edit",
+                "commit",
+                "push",
+                "pr",
+                "merge",
+                "deploy",
+              ].map((level) => (
+                <option key={level} value={level}>
+                  {level[0].toUpperCase() + level.slice(1)}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="max-h-72 space-y-2 overflow-y-auto pt-3">
+            {activity.length ? (
+              activity.map((event) => (
+                <div key={event.id} className="flex gap-2 text-sm">
+                  <span
+                    className={`mt-1.5 size-2 shrink-0 rounded-full ${event.status === "failed" ? "bg-red-500" : event.status === "running" ? "animate-pulse bg-amber-400" : "bg-emerald-500"}`}
+                  />
+                  <div>
+                    <div>{event.message}</div>
+                    <div className="text-[11px] text-muted-foreground">
+                      {new Date(event.created_at).toLocaleString()}
+                    </div>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Activity will appear when Astrid works on this project.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+      {advancedModelControls && selected && (
         <div className="flex h-9 shrink-0 items-center gap-3 overflow-x-auto whitespace-nowrap border-b px-4 text-[11px] text-muted-foreground [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <span>
             {selected.capabilities.contextWindow
@@ -200,7 +296,16 @@ export function ChatPane({
           )}
         </div>
       )}
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div
+        ref={scrollRef}
+        onScroll={(event) => {
+          const element = event.currentTarget;
+          followOutput.current =
+            element.scrollHeight - element.scrollTop - element.clientHeight <
+            120;
+        }}
+        className="min-h-0 flex-1 overflow-y-auto"
+      >
         <div className="mx-auto w-full max-w-3xl space-y-8 px-4 pb-40 pt-8 sm:px-8">
           {shown.length === 0 ? (
             <Empty

@@ -22,9 +22,17 @@ describe("GitHub context selection", () => {
         "Open the Astrid GitHub repository and inspect the source files",
       ),
     ).toBe(true);
+    expect(
+      isGitHubWorkspaceRequest("Browse the astrid-workspace repository"),
+    ).toBe(true);
     expect(isGitHubWorkspaceRequest("How many repos are in my GitHub?")).toBe(
       false,
     );
+    expect(
+      isGitHubWorkspaceRequest(
+        "Can you open my GitHub repositories or my GitHub account?",
+      ),
+    ).toBe(false);
   });
 
   it("selects a repository from a GitHub URL", () => {
